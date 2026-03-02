@@ -18,7 +18,6 @@ SymbolWorker::SymbolWorker(std::string symbol, int maxPosition)
     });
 
     mdc_.setCallback([this](const MarketDataUpdate&) {
-        notifyData();
         if (dataCb_) {
             dataCb_();
         }
@@ -36,7 +35,7 @@ void SymbolWorker::start() {
 
 void SymbolWorker::stop() {
     running_ = false;
-    notifyData();
+    cv_.notify_one();
     mdc_.disconnect();
     engine_.disconnect();
     if (thread_.joinable()) {
@@ -50,30 +49,13 @@ void SymbolWorker::join() {
     }
 }
 
-void SymbolWorker::notifyData() {
-    {
-        std::lock_guard<std::mutex> lock(mtx_);
-        dataAvailable_ = true;
-    }
-    cv_.notify_one();
-}
-
 void SymbolWorker::run() {
     spdlog::info("[{}] Starting symbol thread", symbol_);
     mdc_.connect();
     engine_.connect("sim");
 
-    while (running_) {
-        std::unique_lock<std::mutex> lock(mtx_);
-        cv_.wait(lock, [this] { return !running_ || dataAvailable_; });
-
-        if (!running_) break;
-
-        dataAvailable_ = false;
-        lock.unlock();
-
-        mdc_.poll();
-    }
+    std::unique_lock<std::mutex> lock(mtx_);
+    cv_.wait(lock, [this] { return !running_; });
 
     spdlog::info("[{}] Exiting symbol thread", symbol_);
 }

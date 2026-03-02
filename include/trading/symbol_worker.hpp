@@ -34,7 +34,6 @@ public:
 
 private:
     void run();
-    void notifyData();
 
     std::string symbol_;
     std::thread thread_;
@@ -49,7 +48,6 @@ private:
 
     std::mutex mtx_;
     std::condition_variable cv_;
-    bool dataAvailable_{false};
 };
 
 } // namespace trading

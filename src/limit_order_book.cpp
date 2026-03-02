@@ -2,10 +2,15 @@
 
 #include <spdlog/spdlog.h>
 
+#include <cmath>
 #include <stdexcept>
 #include <vector>
 
 namespace trading {
+
+static double normalizePrice(double p) {
+    return std::round(p * 1e8) / 1e8;
+}
 
 LimitOrderBook::LimitOrderBook(const std::string& symbol)
     : symbol_(symbol), bids_(), asks_() {}
@@ -16,13 +21,13 @@ void LimitOrderBook::reset(const BookSnapshot& snapshot) {
 
     for (const auto& e : snapshot.bids) {
         if (e.size > 0.0) {
-            bids_[e.price] = e.size;
+            bids_[normalizePrice(e.price)] = e.size;
         }
     }
 
     for (const auto& e : snapshot.asks) {
         if (e.size > 0.0) {
-            asks_[e.price] = e.size;
+            asks_[normalizePrice(e.price)] = e.size;
         }
     }
 }
@@ -34,28 +39,28 @@ void LimitOrderBook::resetTopLevels(const std::vector<OrderBookEntry>& bids,
 
     for (const auto& b : bids) {
         if (b.size > 0.0) {
-            bids_[b.price] = b.size;
+            bids_[normalizePrice(b.price)] = b.size;
         }
     }
 
     for (const auto& a : asks) {
         if (a.size > 0.0) {
-            asks_[a.price] = a.size;
+            asks_[normalizePrice(a.price)] = a.size;
         }
     }
 }
 
 void LimitOrderBook::onUpdate(Side side, double price, double size) {
     auto& book = (side == Side::Bid) ? bids_ : asks_;
+    const double key = normalizePrice(price);
 
     if (size == 0.0) {
-        book.erase(price);
+        book.erase(key);
         spdlog::info("[OrderBook] [{}] Removed {} at {:.2f}", symbol_, (side == Side::Bid ? "Bid" : "Ask"), price);
     } else {
-        book[price] = size;
+        book[key] = size;
         spdlog::info("[OrderBook] [{}] Updated {} at {:.2f} to size {:.4f}", symbol_, (side == Side::Bid ? "Bid" : "Ask"), price, size);
     }
-
 }
 
 OrderBookEntry LimitOrderBook::topOfBook(Side side) const {

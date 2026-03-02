@@ -1,8 +1,6 @@
 import trading_core as tc
 
-imbalance_history = {}
-
-def compute_buy_order(order_book, symbol, cash_usd, imbalance_percent, max_fraction=0.10, max_levels=10):
+def compute_buy_order(order_book, symbol, cash_usd, imbalance_percent, imbalance_history, max_fraction=0.10, max_levels=10):
     asks = order_book.depth(tc.Side.Ask, max_levels)
     if not asks:
         return None, 0.0
@@ -11,11 +9,7 @@ def compute_buy_order(order_book, symbol, cash_usd, imbalance_percent, max_fract
     top_ask = asks[0]
     spread = top_ask.price - top_bid.price
 
-    hist = imbalance_history.setdefault(symbol, [])
-    hist.append(imbalance_percent)
-    if len(hist) > 5:
-        hist.pop(0)
-    if len(hist) == 5 and imbalance_percent < hist[0]:
+    if len(imbalance_history) == 5 and imbalance_history[-1] < imbalance_history[0]:
         return None, 0.0
 
     mid_price = (top_ask.price + top_bid.price) / 2
@@ -44,7 +38,7 @@ def compute_buy_order(order_book, symbol, cash_usd, imbalance_percent, max_fract
     return round(limit_price, 2), round(accumulated_size, 4)
 
 
-def compute_sell_order(order_book, symbol, position, imbalance_percent, max_fraction=1.0, max_levels=10):
+def compute_sell_order(order_book, symbol, position, imbalance_percent, imbalance_history, max_fraction=1.0, max_levels=10):
     bids = order_book.depth(tc.Side.Bid, max_levels)
     if not bids:
         return None, 0.0
@@ -53,14 +47,8 @@ def compute_sell_order(order_book, symbol, position, imbalance_percent, max_frac
     top_ask = order_book.top_of_book(symbol, False)
     spread = top_ask.price - top_bid.price
 
-    hist = imbalance_history.setdefault(symbol, [])
-    hist.append(imbalance_percent)
-    if len(hist) > 5:
-        hist.pop(0)
-    if len(hist) == 5 and imbalance_percent > hist[0]:
+    if len(imbalance_history) == 5 and imbalance_history[-1] > imbalance_history[0]:
         return None, 0.0
-
-
 
     mid_price = (top_ask.price + top_bid.price) / 2
     spread_penalty = min(spread / mid_price, 0.005)
@@ -72,7 +60,6 @@ def compute_sell_order(order_book, symbol, position, imbalance_percent, max_frac
         return None, 0.0
 
     accumulated = 0.0
-    accumulated_size = 0.0
     limit_price = 0.0
 
     for lvl in bids:
@@ -80,7 +67,6 @@ def compute_sell_order(order_book, symbol, position, imbalance_percent, max_frac
         if fill <= 0.0:
             break
         accumulated += fill
-        accumulated_size += fill * lvl.price
         limit_price = lvl.price
         if accumulated >= target:
             break

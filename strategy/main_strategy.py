@@ -1,5 +1,4 @@
 import time
-import requests
 import threading
 import trading_core as tc
 
@@ -37,23 +36,9 @@ def book_changed(new, old):
             return True
     return False
 
-def seed_order_book(symbol, order_book):
-    url = f"https://api.binance.us/api/v3/depth?symbol={symbol.upper()}&limit=1000"
-    try:
-        response = requests.get(url, timeout=3)
-        snapshot = response.json()
-        if "bids" not in snapshot or "asks" not in snapshot:
-            log(f"[ERROR] Invalid response for {symbol}: {snapshot}")
-            return
-        bids = [tc.OrderBookEntry(float(p), float(s)) for p, s in snapshot["bids"]]
-        asks = [tc.OrderBookEntry(float(p), float(s)) for p, s in snapshot["asks"]]
-        order_book.reset_top_levels(bids, asks)
-    except Exception as e:
-        log(f"[ERROR] Snapshot failed for {symbol}: {e}")
-
-def make_exec_callback(symbol, orderBook, rm):
+def make_exec_callback(symbol):
     def callback(rpt):
-        on_exec_report(rpt, orderBook, rm, symbol_states, symbol)
+        on_exec_report(rpt, symbol_states, symbol)
     return callback
 
 def process_symbol(symbol, worker, state):
@@ -98,7 +83,7 @@ def process_symbol(symbol, worker, state):
         state.cash > 0.0 and imbalance_percent > 75 and imbalance_trending_up
         and spread_pct < 0.0003 and now - state.last_buy_time > 20
     ):
-        buy_price, size = compute_buy_order(lob, symbol, state.cash, imbalance_percent)
+        buy_price, size = compute_buy_order(lob, symbol, state.cash, imbalance_percent, state.rolling_imbalance)
         if size > 0 and buy_price is not None:
             oid = f"BUY-{symbol}-{int(now)}"
             order = tc.NewOrder(oid, symbol, True, buy_price, size)
@@ -110,7 +95,7 @@ def process_symbol(symbol, worker, state):
         state.position > 0.0 and imbalance_percent < 25 and not imbalance_trending_up
         and spread_pct < 0.0003 and now - state.last_sell_time > 10
     ):
-        sell_price, size = compute_sell_order(lob, symbol, state.position, imbalance_percent)
+        sell_price, size = compute_sell_order(lob, symbol, state.position, imbalance_percent, state.rolling_imbalance)
         if size > 0 and sell_price is not None:
             oid = f"SELL-{symbol}-{int(now)}"
             order = tc.NewOrder(oid, symbol, False, sell_price, size)
@@ -128,10 +113,7 @@ def make_data_callback(symbol, worker, state):
 
 def setup_worker(symbol):
     worker = tc.SymbolWorker(symbol, max_pos)
-    rm = tc.RiskManager(max_pos)
-    orderBook = worker.get_order_book()
-    seed_order_book(symbol, orderBook)
-    worker.set_callback(make_exec_callback(symbol, orderBook, rm))
+    worker.set_callback(make_exec_callback(symbol))
     worker.set_data_callback(make_data_callback(symbol, worker, symbol_states[symbol]))
     worker.start()
     workers.append(worker)

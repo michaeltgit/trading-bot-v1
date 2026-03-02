@@ -26,7 +26,7 @@ def print_account_summary(state, orderBook, symbol):
 
     buffer_log(symbol, f"[SIMULATED] [{symbol}] Realized PnL: ${state.realized_pnl:.2f} | Unrealized PnL: ${unrealized:.2f} | Total PnL: ${net_pnl:.2f}\n")
 
-def on_exec_report(rpt, orderBook, rm, symbol_states, symbol):
+def on_exec_report(rpt, symbol_states, symbol):
     state = symbol_states[symbol]
 
     if rpt.isFill:
@@ -48,5 +48,3 @@ def on_exec_report(rpt, orderBook, rm, symbol_states, symbol):
 
         if rpt.orderId in state.active_orders:
             del state.active_orders[rpt.orderId]
-
-    rm.on_execution_report(rpt)
