@@ -1,53 +1,70 @@
-#include <cassert>
-#include <iostream>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 
-#include <spdlog/spdlog.h>
+#include "trading/exec/execution_engine.hpp"
+#include "trading/md/bounded_book.hpp"
 
-#include "trading/execution_engine.hpp"
-#include "trading/limit_order_book.hpp"
-#include "trading/execution_report.hpp"
-#include "trading/new_order.hpp"
+using namespace trading;
+using Catch::Matchers::WithinAbs;
 
-int main() {
-    using namespace trading;
+namespace {
+NewOrder mk(OrderId id, Side s, double px, double qty, double tick) {
+    NewOrder o{};
+    o.id = id; o.symbolId = 0; o.side = s;
+    o.price = Price::fromDouble(px, tick);
+    o.qty = Qty{qty};
+    return o;
+}
+} // namespace
 
-    ExecutionEngine engine;
-    LimitOrderBook orderBook("TEST");
+TEST_CASE("Full fill at a single level", "[engine]") {
+    BoundedBook<4096> book(0.01);
+    book.update(Side::Ask, Price::fromDouble(100.0, 0.01), Qty{5.0});
 
-    orderBook.onUpdate(Side::Ask, 42.5, 100);
-    engine.setOrderBook(&orderBook);
+    ExecutionEngine eng;
+    auto rpt = eng.simulate(mk(1, Side::Bid, 100.0, 5.0, 0.01), book, 0.01, Timestamp{});
+    REQUIRE(rpt.isFill);
+    REQUIRE_THAT(rpt.execQty.value(), WithinAbs(5.0, 1e-9));
+    REQUIRE(rpt.execPrice == Price::fromDouble(100.0, 0.01));
+}
 
-    bool callbackTriggered = false;
-    ExecutionReport report{};
+TEST_CASE("Partial fill when depth insufficient", "[engine]") {
+    BoundedBook<4096> book(0.01);
+    book.update(Side::Ask, Price::fromDouble(100.0, 0.01), Qty{3.0});
 
-    engine.setCallback([&](const ExecutionReport &rpt) {
-        callbackTriggered = true;
-        report = rpt;
-    });
+    ExecutionEngine eng;
+    auto rpt = eng.simulate(mk(1, Side::Bid, 100.0, 10.0, 0.01), book, 0.01, Timestamp{});
+    REQUIRE(rpt.isFill);
+    REQUIRE_THAT(rpt.execQty.value(), WithinAbs(3.0, 1e-9));
+}
 
-    engine.connect("TEST");
+TEST_CASE("VWAP across multiple levels", "[engine]") {
+    BoundedBook<4096> book(0.01);
+    book.update(Side::Ask, Price::fromDouble(100.00, 0.01), Qty{5.0});
+    book.update(Side::Ask, Price::fromDouble(100.10, 0.01), Qty{5.0});
 
-    NewOrder order{"OID123", "BTCUSDT", true, 42.5, 100};
-    std::string returnedId = engine.sendOrder(order);
+    ExecutionEngine eng;
+    auto rpt = eng.simulate(mk(1, Side::Bid, 100.10, 10.0, 0.01), book, 0.01, Timestamp{});
+    REQUIRE(rpt.isFill);
+    REQUIRE_THAT(rpt.execPrice.toDouble(0.01), WithinAbs(100.05, 1e-6));
+}
 
-    assert(callbackTriggered && "[FAIL] Execution callback was not triggered");
-    assert(returnedId == "OID123" && "[FAIL] Returned orderId mismatch");
-    assert(report.orderId == "OID123");
-    assert(report.isFill && "[FAIL] Expected simulated fill");
-    assert(report.execPrice == 42.5);
-    assert(report.execSize == 100.0);
+TEST_CASE("No match when limit price is inferior", "[engine]") {
+    BoundedBook<4096> book(0.01);
+    book.update(Side::Ask, Price::fromDouble(100.0, 0.01), Qty{5.0});
 
-    callbackTriggered = false;
-    bool cancelSuccess = engine.cancelOrder("OID123");
+    ExecutionEngine eng;
+    auto rpt = eng.simulate(mk(1, Side::Bid, 99.0, 5.0, 0.01), book, 0.01, Timestamp{});
+    REQUIRE_FALSE(rpt.isFill);
+    REQUIRE(rpt.execQty.value() == 0.0);
+}
 
-    assert(cancelSuccess && "[FAIL] Cancel failed");
-    assert(callbackTriggered && "[FAIL] Cancel callback not triggered");
-    assert(report.orderId == "OID123");
-    assert(!report.isFill && "[FAIL] Cancel report should not be a fill");
-    assert(report.execSize == 0.0);
+TEST_CASE("Sell matches bid side", "[engine]") {
+    BoundedBook<4096> book(0.01);
+    book.update(Side::Bid, Price::fromDouble(99.0, 0.01), Qty{5.0});
 
-    engine.disconnect();
-
-    spdlog::info("[PASS] ExecutionEngine test succeeded.");
-    return 0;
+    ExecutionEngine eng;
+    auto rpt = eng.simulate(mk(1, Side::Ask, 99.0, 5.0, 0.01), book, 0.01, Timestamp{});
+    REQUIRE(rpt.isFill);
+    REQUIRE(rpt.side == Side::Ask);
 }

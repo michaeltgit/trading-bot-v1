@@ -1,0 +1,26 @@
+{
+  "product_id": "BTC-USD",
+  "symbol_id": 0,
+  "tick_size": 0.01,
+  "max_position": 5.0,
+  "initial_cash": 10000.0,
+
+  "venue": {
+    "host": "ws-feed.exchange.coinbase.com",
+    "port": "443",
+    "channel": "level2_batch"
+  },
+
+  "threading": {
+    "network_core": -1,
+    "strategy_core": -1,
+    "strategy_busy_spin": false
+  },
+
+  "strategy": {
+    "depth_levels": 6,
+    "rolling_window": 5,
+    "buy":  { "imbalance_pct": 75.0, "spread_pct": 0.0003, "cooldown_s": 20.0, "max_fraction": 0.10 },
+    "sell": { "imbalance_pct": 25.0, "spread_pct": 0.0003, "cooldown_s": 10.0, "max_fraction": 1.0 }
+  }
+}

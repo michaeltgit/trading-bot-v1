@@ -1,121 +1,92 @@
-# Trading Bot
+# trading-engine
 
-A real time trading system built for experimentation and strategy development, using Binance US crypto data as a convenient, 24/7 live and free feed.
+A low-latency C++ trading engine against Coinbase Exchange. Paper trading only; no real orders are placed.
 
-The system is fully event driven, the trading logic reacts instantly to live market data updates without polling or delay.
+The network thread ingests the Coinbase WebSocket feed, parses messages with simdjson, and pushes structured market events onto a lock-free SPSC queue. The strategy thread drains the queue, updates a flat price-level order book, runs the imbalance strategy, and routes signals through a risk check and a simulated fill engine. HDR latency histograms are recorded at every stage.
 
-## Features
+## Build
 
-This trading bot is built in C++ with multithreading, using dedicated threads per symbol. This design enables concurrent processing of live market data and order execution across any number of user defined assets. You can add or remove symbols simply by editing the config file, without needing to modify the source code.
-
-The bot maintains real time order books by combining full snapshots fetched from REST APIs with streaming incremental updates received via WebSockets. It continuously monitors the top 6 levels of each order book and only triggers trading logic when these top levels change, ensuring efficient and responsive decision making.
-
-Simulated order execution models realistic market behavior, supporting partial fills and average price tracking. Profit and loss (PnL) is tracked in real time, providing an accurate performance view throughout trading.
-
-**Output:** The system prints real time summaries, order book snapshots, and simulated trades directly to the console. Whenever there is a meaningful change in the top 6 order book levels, the bot prints updated market summaries, order book depths, and real time trade activity. This enables clear and immediate visibility into both market state and strategy driven order execution.
-
-**Note**: In nearly all cases, output is printed in the intended order. However, due to the multithreaded nature of both the C++ backend and Python strategy, there may occasionally be slight timing discrepancies in the console output. For example, C++ limit order book updates might appear just before their associated Python calculated summaries. Everything is working as expected from a calculation standpoint, this is simply a minor delay in output timing and does not affect the bot’s behavior.
-
-## Getting Started
-
-### Prerequisites
-
-- C++17 compatible compiler
-- CMake 3.15 or newer
-- Boost libraries (system, thread)
-- OpenSSL
-- spdlog
-- nlohmann_json
-- libcurl
-- Python 3.x
-
-### Clone and Build
-
-```bash
-git clone https://github.com/michaeltgit/trading-bot.git
-cd trading-bot
-
-mkdir build && cd build
-cmake ..
-make
-
-./trading_bot   # Basic orderbook functionality
-
-cd ..           # Return to project root
-PYTHONPATH=build python3 strategy/main_strategy.py   # Run the full Python-based strategy loop
+```
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
 ```
 
-## Live Feed Example
-[![Watch the Live Feed Demo](https://img.youtube.com/vi/quIsbhoqdBY/0.jpg)](https://www.youtube.com/watch?v=quIsbhoqdBY)
+Build types are Debug (ASAN + UBSAN at -O1), Release (-O3, -march=native, LTO), and RelWithDebInfo.
 
-Demo of `trading-bot-v1` during a liquidity spike. Watch how the system reacts to rapid market changes in real time.
+Dependencies: C++20 compiler, CMake 3.20+, Boost (system, thread), OpenSSL, nlohmann_json, libcurl, spdlog. simdjson and Catch2 are pulled in via FetchContent.
 
----
+## Run
 
-## Simulated Order Fills
-![Simulated Fill Screenshot](assets/fill_demo.png)
-
-Sample trade execution with fill logic and real time PnL tracking from the bot.
-
-> Notes:
-> 1. This screenshot was captured under the old order calculation logic. The bot would not have made this trade under the revised logic due to the high spread, but nevertheless it is still illustrative.
-> 2. It's normal for initial unrealized PnL to appear negative immediately after a trade. This happens because buys are simulated at the ask price, while the position is valued using the top bid.
-
-## Tech Stack
-
-- C++17
-- Boost.Asio and Boost.Thread (networking & concurrency)
-- OpenSSL (secure WebSocket connections)
-- spdlog (logging)
-- nlohmann_json (JSON parsing)
-- libcurl (REST API snapshots)
-- pybind11 (Python bindings)
-- Python 3.x (strategy scripting)
-
-## Project Structure
-
-```bash
-trading-bot/
-├── include/trading/          # C++ core headers
-│   ├── config.hpp
-│   ├── execution_engine.hpp
-│   ├── execution_report.hpp
-│   ├── limit_order_book.hpp
-│   ├── market_data_connector.hpp
-│   ├── new_order.hpp
-│   ├── order_state.hpp
-│   ├── risk_manager.hpp
-│   ├── symbol_worker.hpp
-│   └── telemetry.hpp
-├── src/                      # C++ core source files
-│   ├── config.cpp
-│   ├── execution_engine.cpp
-│   ├── limit_order_book.cpp
-│   ├── main.cpp
-│   ├── market_data_connector.cpp
-│   ├── risk_manager.cpp
-│   ├── symbol_worker.cpp
-│   └── telemetry.cpp
-├── strategy/                 # Python strategy scripts
-│   ├── config.py
-│   ├── main_strategy.py
-│   ├── pnl.py
-│   ├── print_utils.py
-│   └── order_calculator.py
-├── tests/                    # Unit tests for C++ core
-│   ├── test_config.cpp
-│   ├── test_execution_engine.cpp
-│   ├── test_limit_order_book.cpp
-│   ├── test_market_data_connector.cpp
-│   ├── test_risk_manager.cpp
-│   └── test_telemetry.cpp
-├── extern/                   # External dependencies
-├── config.cfg                # Configuration for symbols and settings
-├── CMakeLists.txt            # Build configuration
-├── README.md
-└── .gitignore                # Git ignore rules
+```
+./build/trading_engine config.json
 ```
 
-## License
+Ctrl-C flushes metrics and exits cleanly. A heartbeat line prints every 2 seconds and a full metrics dump every 30 seconds.
 
-N/A
+## Tests
+
+```
+cmake --build build --target tests_cpp
+ctest --test-dir build --output-on-failure
+
+./build/tests_cpp "[!benchmark]"
+```
+
+## Configuration
+
+`config.json`:
+
+```
+{
+  "product_id": "BTC-USD",
+  "symbol_id": 0,
+  "tick_size": 0.01,
+  "max_position": 5.0,
+  "initial_cash": 10000.0,
+  "venue": {
+    "host": "ws-feed.exchange.coinbase.com",
+    "port": "443",
+    "channel": "level2_batch"
+  },
+  "threading": {
+    "network_core": -1,
+    "strategy_core": -1,
+    "strategy_busy_spin": false
+  },
+  "strategy": {
+    "depth_levels": 6,
+    "rolling_window": 5,
+    "buy":  { "imbalance_pct": 75.0, "spread_pct": 0.0003, "cooldown_s": 20.0, "max_fraction": 0.10 },
+    "sell": { "imbalance_pct": 25.0, "spread_pct": 0.0003, "cooldown_s": 10.0, "max_fraction": 1.0 }
+  }
+}
+```
+
+`channel` defaults to `level2_batch` (public, ~50ms batched). Switch to `level2` and set `COINBASE_API_KEY` / `COINBASE_API_SECRET` / `COINBASE_API_PASSPHRASE` to use the authenticated stream.
+
+Set `network_core` / `strategy_core` to pin threads to specific CPU cores on Linux (via `pthread_setaffinity_np`) or macOS (best-effort `thread_policy_set`). `strategy_busy_spin` hot-waits on the queue instead of sleeping; only useful with pinned, isolated cores.
+
+## Layout
+
+```
+include/trading/
+  core/       types, result, clock, logger, metrics, runtime
+  md/         coinbase_*, bounded_book
+  strategy/   signal, imbalance_strategy, order_sizer, pnl_tracker
+  exec/       order_types, risk_manager, execution_engine, circuit_breaker
+  util/       spsc_queue, object_pool, hdr_histogram
+src/
+tests/        Catch2 tests + fixtures/
+config.json
+CMakeLists.txt
+```
+
+## Strategy
+
+Dollar-weighted order book imbalance over the top N levels, with a rolling window for trend confirmation and a spread filter. Order size is confidence-scaled by how strong the imbalance is minus a spread penalty. All parameters live in `config.json`.
+
+This is a taker strategy. It crosses the spread on every trade, so in simulation it pays the half-spread each round trip. Replace `ImbalanceStrategy` with a maker / quoting strategy to get positive expectancy; the rest of the engine is venue- and signal-agnostic.
+
+## CI
+
+GitHub Actions runs Ubuntu and macOS in Debug and Release, a dedicated TSAN job, and a clang-format check.

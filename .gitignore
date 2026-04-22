@@ -1,27 +1,27 @@
 /build/
-/CMakeFiles/
+/Testing/
+
 CMakeCache.txt
+CMakeFiles/
 cmake_install.cmake
 Makefile
-
-/Testing/
 CTestTestfile.cmake
 CTestCostData.txt
-LastTest.log
 
 .vscode/
+.idea/
+.clangd/
+compile_commands.json
 
 *.o
 *.obj
 *.so
 *.a
+*.dylib
 *.exe
 *.out
-
-*.pyc
-__pycache__/
-
 *.log
-*.tmp
+
+tmp_*.json
 
 .DS_Store

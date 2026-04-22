@@ -1,56 +1,56 @@
-#include <cassert>
-#include <iostream>
+#include <catch2/catch_test_macros.hpp>
 
-#include <spdlog/spdlog.h>
+#include "trading/exec/risk_manager.hpp"
 
-#include "trading/execution_engine.hpp"
-#include "trading/risk_manager.hpp"
+using namespace trading;
 
-int main() {
-    using namespace trading;
+namespace {
+NewOrder mkOrder(SymbolId id, Side s, double qty) {
+    NewOrder o{};
+    o.id = 1; o.symbolId = id; o.side = s;
+    o.qty = Qty{qty}; o.price = Price::fromTicks(10000);
+    return o;
+}
+ExecutionReport mkFill(SymbolId id, Side s, double qty) {
+    ExecutionReport r{};
+    r.id = 1; r.symbolId = id; r.side = s; r.isFill = true;
+    r.execQty = Qty{qty}; r.execPrice = Price::fromTicks(10000);
+    return r;
+}
+} // namespace
 
-    bool wasRejected = false;
-    std::string lastRejectedId;
+TEST_CASE("RiskManager approves within limit", "[risk]") {
+    RiskManager rm;
+    rm.configure(0, 100.0);
+    REQUIRE(rm.approve(mkOrder(0, Side::Bid, 50.0)));
+}
 
-    RiskManager rm(100);
+TEST_CASE("RiskManager rejects over long limit", "[risk]") {
+    RiskManager rm;
+    rm.configure(0, 100.0);
+    REQUIRE_FALSE(rm.approve(mkOrder(0, Side::Bid, 200.0)));
+}
 
-    rm.setRejectCallback([&](const NewOrder& o) {
-        wasRejected = true;
-        lastRejectedId = o.orderId;
-    });
+TEST_CASE("RiskManager rejects over short limit", "[risk]") {
+    RiskManager rm;
+    rm.configure(0, 100.0);
+    REQUIRE_FALSE(rm.approve(mkOrder(0, Side::Ask, 200.0)));
+}
 
-    NewOrder o1{"O1", "TEST", true, 10.0, 50};
-    assert(rm.approveOrder(o1) && "Expected approval for O1");
+TEST_CASE("RiskManager position tracks fills", "[risk]") {
+    RiskManager rm;
+    rm.configure(0, 100.0);
+    rm.onFill(mkFill(0, Side::Bid, 30.0));
+    REQUIRE(rm.position(0) == 30.0);
+    rm.onFill(mkFill(0, Side::Ask, 10.0));
+    REQUIRE(rm.position(0) == 20.0);
+}
 
-    wasRejected = false;
-    lastRejectedId.clear();
-    NewOrder o2{"O2", "TEST", true, 10.0, 200};
-    assert(!rm.approveOrder(o2) && "Expected rejection for O2");
-    assert(wasRejected && lastRejectedId == "O2");
-
-    ExecutionReport fill1{"F1", "TEST", true, true, 10.0, 50};
-    rm.onExecutionReport(fill1);
-    assert(rm.getPosition("TEST") == 50.0);
-
-    wasRejected = false;
-    lastRejectedId.clear();
-    NewOrder o3{"O3", "TEST", true, 10.0, 60};
-    assert(!rm.approveOrder(o3) && "Expected rejection pushing to 110");
-    assert(wasRejected && lastRejectedId == "O3");
-
-    NewOrder o4{"O4", "TEST", false, 10.0, 40};
-    assert(rm.approveOrder(o4) && "Expected approval for O4 (sell)");
-
-    ExecutionReport fill2{"F2", "TEST", false, true, 10.0, 40};
-    rm.onExecutionReport(fill2);
-    assert(rm.getPosition("TEST") == 10.0);
-
-    wasRejected = false;
-    lastRejectedId.clear();
-    NewOrder o5{"O5", "TEST", false, 10.0, 120};
-    assert(!rm.approveOrder(o5) && "Expected rejection for short beyond limit");
-    assert(wasRejected && lastRejectedId == "O5");
-
-    spdlog::info("[PASS] RiskManager test succeeded.");
-    return 0;
+TEST_CASE("RiskManager isolates symbols", "[risk]") {
+    RiskManager rm;
+    rm.configure(0, 10.0);
+    rm.configure(1, 10.0);
+    rm.onFill(mkFill(0, Side::Bid, 5.0));
+    REQUIRE(rm.position(0) == 5.0);
+    REQUIRE(rm.position(1) == 0.0);
 }
