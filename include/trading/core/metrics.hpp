@@ -28,8 +28,10 @@ struct Metrics {
     std::atomic<uint64_t> ordersRejected{0};
     std::atomic<uint64_t> fills{0};
     std::atomic<uint64_t> partialFills{0};
+    std::atomic<uint64_t> circuitBlocked{0};
 
     std::atomic<uint64_t> queueFullDrops{0};
+    std::atomic<uint64_t> preSnapshotDrops{0};
 
     void dump(std::ostream& os) const;
 };

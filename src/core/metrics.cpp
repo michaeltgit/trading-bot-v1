@@ -22,8 +22,10 @@ void Metrics::dump(std::ostream& os) const {
        << " ordersApproved=" << ordersApproved.load()
        << " ordersRejected=" << ordersRejected.load()
        << " fills=" << fills.load()
-       << " partialFills=" << partialFills.load() << "\n"
-       << "  queueFullDrops=" << queueFullDrops.load() << "\n";
+       << " partialFills=" << partialFills.load()
+       << " circuitBlocked=" << circuitBlocked.load() << "\n"
+       << "  queueFullDrops=" << queueFullDrops.load()
+       << " preSnapshotDrops=" << preSnapshotDrops.load() << "\n";
 }
 
 } // namespace trading

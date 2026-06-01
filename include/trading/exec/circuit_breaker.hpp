@@ -11,9 +11,11 @@ public:
         : threshold_(threshold), windowMessages_(windowMessages) {}
 
     void recordMessage() noexcept {
+        if (windowMessages_ == 0) return;
         uint64_t n = msgs_.fetch_add(1, std::memory_order_relaxed) + 1;
         if (n % windowMessages_ == 0) {
             errors_.store(0, std::memory_order_relaxed);
+            tripped_.store(false, std::memory_order_release);
         }
     }
 

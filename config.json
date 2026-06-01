@@ -18,9 +18,14 @@
   },
 
   "strategy": {
-    "depth_levels": 6,
-    "rolling_window": 5,
-    "buy":  { "imbalance_pct": 75.0, "spread_pct": 0.0003, "cooldown_s": 20.0, "max_fraction": 0.10 },
-    "sell": { "imbalance_pct": 25.0, "spread_pct": 0.0003, "cooldown_s": 10.0, "max_fraction": 1.0 }
+    "depth_levels": 5,
+    "smoothing_window": 5,
+    "entry_imbalance": 0.30,
+    "take_profit_bps": 8.0,
+    "stop_loss_bps": 8.0,
+    "max_spread_bps": 5.0,
+    "trade_fraction": 0.10,
+    "cooldown_s": 2.0,
+    "allow_short": true
   }
 }

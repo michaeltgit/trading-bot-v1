@@ -46,6 +46,21 @@ TEST_CASE("RiskManager position tracks fills", "[risk]") {
     REQUIRE(rm.position(0) == 20.0);
 }
 
+TEST_CASE("RiskManager rejects buy exceeding cash", "[risk]") {
+    RiskManager rm;
+    rm.configure(0, 100.0, 1000.0, 0.01);  // price = 10000 ticks * 0.01 = 100.0
+    REQUIRE(rm.approve(mkOrder(0, Side::Bid, 5.0)));    // cost 500 <= 1000
+    REQUIRE_FALSE(rm.approve(mkOrder(0, Side::Bid, 20.0)));  // cost 2000 > 1000
+}
+
+TEST_CASE("RiskManager cash depletes on fills", "[risk]") {
+    RiskManager rm;
+    rm.configure(0, 100.0, 1000.0, 0.01);
+    rm.onFill(mkFill(0, Side::Bid, 8.0));  // cost 800
+    REQUIRE(rm.cash(0) == 200.0);
+    REQUIRE_FALSE(rm.approve(mkOrder(0, Side::Bid, 5.0)));  // cost 500 > 200
+}
+
 TEST_CASE("RiskManager isolates symbols", "[risk]") {
     RiskManager rm;
     rm.configure(0, 10.0);

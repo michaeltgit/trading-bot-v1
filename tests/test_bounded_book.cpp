@@ -60,17 +60,32 @@ TEST_CASE("BoundedBook depth walks levels in price order", "[book]") {
     REQUIRE(buf[2].price == Price::fromDouble(100.04, 0.01));
 }
 
-TEST_CASE("BoundedBook rebases on large price drift", "[book]") {
-    BoundedBook<64> b(0.01); // REBASE_THRESHOLD = 16 ticks
+TEST_CASE("BoundedBook recenters as the touch drifts", "[book]") {
+    BoundedBook<64> b(0.01); // window 64 ticks, recenter margin = 8
     b.update(Side::Bid, Price::fromDouble(100.00, 0.01), Qty{1.0});
     REQUIRE(b.rebaseCount() == 0);
 
-    b.update(Side::Ask, Price::fromDouble(110.00, 0.01), Qty{1.0});
-    REQUIRE(b.rebaseCount() == 1);
+    // walk the bid up until it nears the window edge -> forces a recenter
+    for (int i = 1; i <= 30; ++i) {
+        b.update(Side::Bid, Price::fromDouble(100.00 + i * 0.01, 0.01), Qty{1.0});
+    }
+    REQUIRE(b.rebaseCount() >= 1);
+    auto bb = b.topOfBook(Side::Bid);
+    REQUIRE(bb.has_value());
+    REQUIRE(bb->price == Price::fromDouble(100.30, 0.01));
+}
 
-    auto ba = b.topOfBook(Side::Ask);
-    REQUIRE(ba.has_value());
-    REQUIRE(ba->price == Price::fromDouble(110.00, 0.01));
+TEST_CASE("BoundedBook ignores far-outlier updates", "[book]") {
+    BoundedBook<64> b(0.01); // window is only 64 ticks ($0.64)
+    b.update(Side::Bid, Price::fromDouble(100.00, 0.01), Qty{1.0});
+    b.update(Side::Ask, Price::fromDouble(100.05, 0.01), Qty{1.0});
+
+    // a deep bid $10 below is far outside the window: ignore it, don't recenter
+    b.update(Side::Bid, Price::fromDouble(90.00, 0.01), Qty{5.0});
+    REQUIRE(b.rebaseCount() == 0);
+    auto bb = b.topOfBook(Side::Bid);
+    REQUIRE(bb.has_value());
+    REQUIRE(bb->price == Price::fromDouble(100.00, 0.01));
 }
 
 TEST_CASE("BoundedBook matches std::map reference on random inputs", "[book][fuzz]") {

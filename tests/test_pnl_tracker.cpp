@@ -63,6 +63,29 @@ TEST_CASE("Unrealized uses top bid", "[pnl]") {
     REQUIRE_THAT(u, WithinAbs(10.0, 1e-9));
 }
 
+TEST_CASE("Sell beyond long flips to short", "[pnl]") {
+    PnlTracker t;
+    t.seedCash(0, 10'000.0);
+    t.onFill(buyFill(100.0, 1.0), 0.01);
+    t.onFill(sellFill(110.0, 3.0), 0.01);
+    const auto& s = t.state(0);
+    REQUIRE_THAT(s.position, WithinAbs(-2.0, 1e-9));
+    REQUIRE_THAT(s.realized, WithinAbs(10.0, 1e-9));
+    REQUIRE_THAT(s.avg_entry, WithinAbs(110.0, 1e-9));
+}
+
+TEST_CASE("Buy back covers a short", "[pnl]") {
+    PnlTracker t;
+    t.seedCash(0, 10'000.0);
+    t.onFill(sellFill(100.0, 2.0), 0.01);
+    REQUIRE_THAT(t.state(0).position, WithinAbs(-2.0, 1e-9));
+    REQUIRE_THAT(t.state(0).avg_entry, WithinAbs(100.0, 1e-9));
+    t.onFill(buyFill(90.0, 2.0), 0.01);
+    const auto& s = t.state(0);
+    REQUIRE_THAT(s.position, WithinAbs(0.0, 1e-9));
+    REQUIRE_THAT(s.realized, WithinAbs(20.0, 1e-9));
+}
+
 TEST_CASE("Cancel report is ignored", "[pnl]") {
     PnlTracker t;
     t.seedCash(0, 1000.0);

@@ -2,6 +2,7 @@
 
 #include "trading/core/types.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -15,7 +16,7 @@ class BoundedBook {
 
 public:
     static constexpr size_t CENTER = Capacity / 2;
-    static constexpr int64_t REBASE_THRESHOLD = static_cast<int64_t>(Capacity / 4);
+    static constexpr int64_t RECENTER_MARGIN = static_cast<int64_t>(Capacity / 8);
 
     explicit BoundedBook(double tickSize) noexcept : tick_(tickSize) {}
 
@@ -37,12 +38,9 @@ public:
             have_ref_ = true;
         }
 
-        int64_t offset = price.ticks() - ref_tick_;
-        if (offset <= -REBASE_THRESHOLD || offset >= REBASE_THRESHOLD) {
-            rebase(price.ticks());
-            offset = 0;
-        }
-        int64_t idx = static_cast<int64_t>(CENTER) + offset;
+        int64_t idx = static_cast<int64_t>(CENTER) + (price.ticks() - ref_tick_);
+        // Outside the tracked window: deep book or stale. Ignore it rather than
+        // recentering onto an outlier, which would drop the real near-touch levels.
         if (idx < 0 || idx >= static_cast<int64_t>(Capacity)) return;
 
         auto& book = (side == Side::Bid) ? bids_ : asks_;
@@ -61,6 +59,8 @@ public:
                 best_ask_idx_ = static_cast<int32_t>(idx);
             }
         }
+
+        recenterIfNearEdge();
     }
 
     std::optional<PriceLevel> topOfBook(Side side) const noexcept {
@@ -107,6 +107,27 @@ public:
     uint64_t rebaseCount() const noexcept { return rebase_count_; }
 
 private:
+    // Recenter the window on the current touch once it drifts near an edge, so the
+    // book follows genuine price movement without ever centering on a far outlier.
+    void recenterIfNearEdge() noexcept {
+        bool haveBid = best_bid_idx_ >= 0;
+        bool haveAsk = best_ask_idx_ < static_cast<int32_t>(Capacity);
+        if (!haveBid && !haveAsk) return;
+
+        int64_t lo = haveBid ? best_bid_idx_ : best_ask_idx_;
+        int64_t hi = haveAsk ? best_ask_idx_ : best_bid_idx_;
+        if (haveBid && haveAsk) {
+            lo = std::min<int64_t>(best_bid_idx_, best_ask_idx_);
+            hi = std::max<int64_t>(best_bid_idx_, best_ask_idx_);
+        }
+        if (lo >= RECENTER_MARGIN && hi < static_cast<int64_t>(Capacity) - RECENTER_MARGIN) {
+            return;
+        }
+
+        int64_t newRef = ref_tick_ + ((lo + hi) / 2 - static_cast<int64_t>(CENTER));
+        if (newRef != ref_tick_) rebase(newRef);
+    }
+
     void rebase(int64_t newRef) noexcept {
         std::array<double, Capacity> nb{};
         std::array<double, Capacity> na{};

@@ -54,15 +54,28 @@ ctest --test-dir build --output-on-failure
     "strategy_busy_spin": false
   },
   "strategy": {
-    "depth_levels": 6,
-    "rolling_window": 5,
-    "buy":  { "imbalance_pct": 75.0, "spread_pct": 0.0003, "cooldown_s": 20.0, "max_fraction": 0.10 },
-    "sell": { "imbalance_pct": 25.0, "spread_pct": 0.0003, "cooldown_s": 10.0, "max_fraction": 1.0 }
+    "depth_levels": 5,
+    "smoothing_window": 5,
+    "entry_imbalance": 0.30,
+    "take_profit_bps": 8.0,
+    "stop_loss_bps": 8.0,
+    "max_spread_bps": 5.0,
+    "trade_fraction": 0.10,
+    "cooldown_s": 2.0,
+    "allow_short": true
   }
 }
 ```
 
-`channel` defaults to `level2_batch` (public, ~50ms batched). Switch to `level2` and set `COINBASE_API_KEY` / `COINBASE_API_SECRET` / `COINBASE_API_PASSPHRASE` to use the authenticated stream.
+`channel` defaults to `level2_batch` (public, ~50ms batched). Switch to `level2` and set `COINBASE_API_KEY` / `COINBASE_API_SECRET` / `COINBASE_API_PASSPHRASE` to use the authenticated stream. The TLS connection verifies the server certificate and hostname.
+
+An optional `risk` block tunes the circuit breaker, which halts order dispatch after `circuit_error_threshold` rejected orders inside a `circuit_window_msgs` message window and auto-resets after a clean window:
+
+```
+"risk": { "circuit_error_threshold": 20, "circuit_window_msgs": 500 }
+```
+
+`l2update`s received before the first `snapshot` (or before a post-reconnect snapshot) are dropped rather than applied to an unsynced book; on reconnect the feed re-sends a fresh snapshot.
 
 Set `network_core` / `strategy_core` to pin threads to specific CPU cores on Linux (via `pthread_setaffinity_np`) or macOS (best-effort `thread_policy_set`). `strategy_busy_spin` hot-waits on the queue instead of sleeping; only useful with pinned, isolated cores.
 
@@ -83,9 +96,9 @@ CMakeLists.txt
 
 ## Strategy
 
-Dollar-weighted order book imbalance over the top N levels, with a rolling window for trend confirmation and a spread filter. Order size is confidence-scaled by how strong the imbalance is minus a spread penalty. All parameters live in `config.json`.
+Directional order-book-imbalance momentum. Each update computes the size imbalance over the top N levels (`(bid − ask) / (bid + ask)`, in `[-1, 1]`), smoothed over a short window. When flat, a strong smoothed imbalance opens a position in its direction — long if bid-heavy, short if ask-heavy — but only if the spread is tight and the cooldown has elapsed. While holding, the position is closed only on a take-profit or stop-loss move (in bps of the entry price); it does not round-trip on every reversion. One position at a time. All parameters live in `config.json`.
 
-This is a taker strategy. It crosses the spread on every trade, so in simulation it pays the half-spread each round trip. Replace `ImbalanceStrategy` with a maker / quoting strategy to get positive expectancy; the rest of the engine is venue- and signal-agnostic.
+It's still a taker (it crosses the spread to enter and exit), so each round trip pays roughly the spread. Holding for a take-profit several times larger than the spread is what keeps that cost from dominating — tight brackets degrade toward paying the spread on every trade, wide brackets hold for real moves. Expectancy is regime-dependent: it makes money when imbalance predicts the next move and takes capped losses otherwise. For consistent positive expectancy you'd want a maker / quoting strategy that earns the spread instead of paying it; the rest of the engine is venue- and signal-agnostic.
 
 ## CI
 

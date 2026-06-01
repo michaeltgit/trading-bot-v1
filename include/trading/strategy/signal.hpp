@@ -21,18 +21,16 @@ struct Signal {
 };
 
 struct StrategyParams {
-    size_t depth_levels = 6;
-    size_t rolling_window = 5;
+    size_t depth_levels = 5;
+    size_t smoothing_window = 5;
 
-    double buy_imbalance_pct = 75.0;
-    double buy_spread_pct = 0.0003;
-    double buy_cooldown_s = 20.0;
-    double buy_max_fraction = 0.10;
-
-    double sell_imbalance_pct = 25.0;
-    double sell_spread_pct = 0.0003;
-    double sell_cooldown_s = 10.0;
-    double sell_max_fraction = 1.0;
+    double entry_imbalance = 0.30;   // |size imbalance| in [0,1] required to open
+    double take_profit_bps = 8.0;    // close on favorable move (bps of entry)
+    double stop_loss_bps = 8.0;      // close on adverse move (bps of entry)
+    double max_spread_bps = 5.0;     // skip entries when spread is wider than this
+    double trade_fraction = 0.10;    // fraction of cash committed per entry
+    double cooldown_s = 2.0;
+    bool allow_short = true;
 };
 
 } // namespace trading

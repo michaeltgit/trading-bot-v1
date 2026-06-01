@@ -11,6 +11,8 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE RelWithDebInfo)
 endif()
 
+option(TRADING_NATIVE_ARCH "Build Release with -march=native" ON)
+
 # -----------------------------------------------------------------------------
 # Compile flags
 # -----------------------------------------------------------------------------
@@ -21,7 +23,8 @@ target_compile_options(trading_flags INTERFACE
     -Wcast-align -Woverloaded-virtual -Wdouble-promotion
     -Wno-unused-parameter
     $<$<CONFIG:Debug>:-O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined>
-    $<$<CONFIG:Release>:-O3 -march=native -DNDEBUG>
+    $<$<CONFIG:Release>:-O3 -DNDEBUG>
+    $<$<AND:$<CONFIG:Release>,$<BOOL:${TRADING_NATIVE_ARCH}>>:-march=native>
     $<$<CONFIG:RelWithDebInfo>:-O2 -g -DNDEBUG>
 )
 target_link_options(trading_flags INTERFACE
@@ -76,7 +79,6 @@ add_library(trading_core
     src/md/coinbase_parser.cpp
     src/md/coinbase_ws_client.cpp
     src/strategy/imbalance_strategy.cpp
-    src/strategy/order_sizer.cpp
 )
 
 target_link_libraries(trading_core
@@ -108,7 +110,6 @@ add_executable(tests_cpp
     tests/test_result.cpp
     tests/test_logger.cpp
     tests/test_spsc_queue.cpp
-    tests/test_object_pool.cpp
     tests/test_hdr_histogram.cpp
     tests/test_bounded_book.cpp
 

@@ -21,10 +21,11 @@ namespace trading {
 Runtime::Runtime(RuntimeConfig cfg)
     : cfg_(std::move(cfg)),
       book_(cfg_.tick_size),
-      strategy_(cfg_.strategy) {
+      strategy_(cfg_.strategy),
+      breaker_(cfg_.circuitErrorThreshold, cfg_.circuitWindowMsgs) {
     strategy_.setSymbol(cfg_.symbolId, cfg_.tick_size);
     strategy_.setInitialCash(cfg_.initial_cash);
-    risk_.configure(cfg_.symbolId, cfg_.max_position);
+    risk_.configure(cfg_.symbolId, cfg_.max_position, cfg_.initial_cash, cfg_.tick_size);
 
     cfg_.ws.product_ids = {cfg_.product_id};
     ws_ = std::make_unique<CoinbaseWSClient>(cfg_.ws, CoinbaseAuth::fromEnv());
@@ -33,6 +34,7 @@ Runtime::Runtime(RuntimeConfig cfg)
     });
     ws_->setReconnectCallback([this] {
         ++metrics_.reconnects;
+        bookInvalidate_.store(true, std::memory_order_release);
         strategy_.onReconnect();
     });
 }
@@ -42,7 +44,8 @@ Runtime::~Runtime() {
 }
 
 void Runtime::start() {
-    if (running_.exchange(true)) return;
+    if (started_.exchange(true)) return;
+    running_.store(true, std::memory_order_release);
     strategyThread_ = std::thread([this] {
         if (cfg_.strategyCoreId >= 0) pinThreadToCore(cfg_.strategyCoreId);
         strategyLoop();
@@ -51,8 +54,9 @@ void Runtime::start() {
 }
 
 void Runtime::stop() {
-    if (!running_.exchange(false)) return;
-    if (ws_) ws_->stop();
+    if (!started_.exchange(false)) return;
+    if (ws_) ws_->stop();                                   // stop the producer first
+    running_.store(false, std::memory_order_release);       // then let the loop drain and exit
     if (strategyThread_.joinable()) strategyThread_.join();
 }
 
@@ -69,26 +73,26 @@ void Runtime::onCoinbaseMessage(const CoinbaseMessage& msg, Timestamp recvTs) no
             size_t nb = std::min(msg.bids.size(), size_t{64});
             size_t na = std::min(msg.asks.size(), size_t{64});
             for (size_t i = 0; i < nb; ++i) {
-                ev.bids[i] = {Price::fromDouble(msg.bids[i].price, cfg_.tick_size),
-                              Qty{msg.bids[i].qty}};
+                ev.snap.bids[i] = {Price::fromDouble(msg.bids[i].price, cfg_.tick_size),
+                                   Qty{msg.bids[i].qty}};
             }
             for (size_t i = 0; i < na; ++i) {
-                ev.asks[i] = {Price::fromDouble(msg.asks[i].price, cfg_.tick_size),
-                              Qty{msg.asks[i].qty}};
+                ev.snap.asks[i] = {Price::fromDouble(msg.asks[i].price, cfg_.tick_size),
+                                   Qty{msg.asks[i].qty}};
             }
-            ev.nBids = static_cast<uint32_t>(nb);
-            ev.nAsks = static_cast<uint32_t>(na);
+            ev.snap.nBids = static_cast<uint32_t>(nb);
+            ev.snap.nAsks = static_cast<uint32_t>(na);
             break;
         }
         case CoinbaseMsgType::L2Update: {
             ev.kind = MarketEvent::Kind::L2Update;
             size_t n = std::min(msg.changes.size(), size_t{128});
             for (size_t i = 0; i < n; ++i) {
-                ev.changeSides[i] = msg.changes[i].side;
-                ev.changePrices[i] = msg.changes[i].price;
-                ev.changeQtys[i] = msg.changes[i].qty;
+                ev.l2.changeSides[i] = msg.changes[i].side;
+                ev.l2.changePrices[i] = msg.changes[i].price;
+                ev.l2.changeQtys[i] = msg.changes[i].qty;
             }
-            ev.nChanges = static_cast<uint32_t>(n);
+            ev.l2.nChanges = static_cast<uint32_t>(n);
             break;
         }
         case CoinbaseMsgType::Heartbeat: {
@@ -111,51 +115,67 @@ void Runtime::onCoinbaseMessage(const CoinbaseMessage& msg, Timestamp recvTs) no
 void Runtime::strategyLoop() noexcept {
     MarketEvent ev;
     while (running_.load(std::memory_order_acquire)) {
+        if (bookInvalidate_.exchange(false, std::memory_order_acq_rel)) bookReady_ = false;
         if (!queue_.try_pop(ev)) {
-            if (cfg_.strategyBusySpin) {
-                continue;
-            }
+            if (cfg_.strategyBusySpin) continue;
             std::this_thread::sleep_for(std::chrono::microseconds(50));
             continue;
         }
+        processEvent(ev);
+    }
+    while (queue_.try_pop(ev)) processEvent(ev);
+}
 
-        auto bookStart = Clock::now();
+void Runtime::processEvent(const MarketEvent& ev) noexcept {
+    breaker_.recordMessage();
+    auto bookStart = Clock::now();
 
-        switch (ev.kind) {
-            case MarketEvent::Kind::Snapshot: {
-                book_.clear();
-                for (uint32_t i = 0; i < ev.nBids; ++i) {
-                    book_.update(Side::Bid, ev.bids[i].price, ev.bids[i].qty);
-                }
-                for (uint32_t i = 0; i < ev.nAsks; ++i) {
-                    book_.update(Side::Ask, ev.asks[i].price, ev.asks[i].qty);
-                }
-                break;
+    switch (ev.kind) {
+        case MarketEvent::Kind::Snapshot: {
+            book_.clear();
+            for (uint32_t i = 0; i < ev.snap.nBids; ++i) {
+                book_.update(Side::Bid, ev.snap.bids[i].price, ev.snap.bids[i].qty);
             }
-            case MarketEvent::Kind::L2Update: {
-                for (uint32_t i = 0; i < ev.nChanges; ++i) {
-                    book_.update(ev.changeSides[i],
-                                 Price::fromDouble(ev.changePrices[i], cfg_.tick_size),
-                                 Qty{ev.changeQtys[i]});
-                }
-                break;
+            for (uint32_t i = 0; i < ev.snap.nAsks; ++i) {
+                book_.update(Side::Ask, ev.snap.asks[i].price, ev.snap.asks[i].qty);
             }
-            case MarketEvent::Kind::Heartbeat:
-                continue;
+            bookReady_ = true;
+            break;
         }
-
-        auto bookDone = Clock::now();
-        metrics_.parseToBook.recordNs((bookDone - bookStart).count());
-
-        Signal sig = strategy_.onMarketUpdate(book_, bookDone);
-        auto signalDone = Clock::now();
-        metrics_.bookToSignal.recordNs((signalDone - bookDone).count());
-        metrics_.tickToSignal.recordNs((signalDone - ev.recvNs).count());
-
-        if (sig.isActionable()) {
-            ++metrics_.signalsGenerated;
-            dispatchOrder(sig, signalDone);
+        case MarketEvent::Kind::L2Update: {
+            if (!bookReady_) {
+                ++metrics_.preSnapshotDrops;
+                return;
+            }
+            for (uint32_t i = 0; i < ev.l2.nChanges; ++i) {
+                book_.update(ev.l2.changeSides[i],
+                             Price::fromDouble(ev.l2.changePrices[i], cfg_.tick_size),
+                             Qty{ev.l2.changeQtys[i]});
+            }
+            break;
         }
+        case MarketEvent::Kind::Heartbeat:
+            return;
+    }
+
+    auto bookDone = Clock::now();
+    metrics_.parseToBook.recordNs((bookDone - bookStart).count());
+
+    if (auto bid = book_.topOfBook(Side::Bid)) {
+        markBid_.store(bid->price.toDouble(cfg_.tick_size), std::memory_order_relaxed);
+    }
+    if (auto ask = book_.topOfBook(Side::Ask)) {
+        markAsk_.store(ask->price.toDouble(cfg_.tick_size), std::memory_order_relaxed);
+    }
+
+    Signal sig = strategy_.onMarketUpdate(book_, bookDone);
+    auto signalDone = Clock::now();
+    metrics_.bookToSignal.recordNs((signalDone - bookDone).count());
+    metrics_.tickToSignal.recordNs((signalDone - ev.recvNs).count());
+
+    if (sig.isActionable()) {
+        ++metrics_.signalsGenerated;
+        dispatchOrder(sig, signalDone);
     }
 }
 
@@ -170,8 +190,14 @@ void Runtime::dispatchOrder(const Signal& sig, Timestamp now) noexcept {
 
     ++metrics_.ordersSent;
 
+    if (breaker_.isTripped()) {
+        ++metrics_.circuitBlocked;
+        return;
+    }
+
     if (!risk_.approve(o)) {
         ++metrics_.ordersRejected;
+        breaker_.recordError();
         return;
     }
     ++metrics_.ordersApproved;

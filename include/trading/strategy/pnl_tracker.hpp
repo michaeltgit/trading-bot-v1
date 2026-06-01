@@ -3,7 +3,9 @@
 #include "trading/core/types.hpp"
 #include "trading/exec/order_types.hpp"
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 
 namespace trading {
 
@@ -26,27 +28,34 @@ public:
         if (!r.isFill || r.symbolId >= MAX_SYMBOLS) return;
         auto& s = states_[r.symbolId];
         double px = r.execPrice.toDouble(tickSize);
-        double qty = r.execQty.value();
-        if (r.side == Side::Bid) {
-            double totalCost = s.avg_entry * s.position + px * qty;
-            s.position += qty;
-            s.avg_entry = s.position > 0.0 ? totalCost / s.position : 0.0;
-            s.cash -= px * qty;
+        double signedQty = r.execQty.value() * (r.side == Side::Bid ? 1.0 : -1.0);
+        double pos = s.position;
+        double newPos = pos + signedQty;
+
+        s.cash -= signedQty * px;
+
+        const bool sameDirection = (pos == 0.0) || ((pos > 0.0) == (signedQty > 0.0));
+        if (sameDirection) {
+            double totalCost = s.avg_entry * std::abs(pos) + px * std::abs(signedQty);
+            s.avg_entry = std::abs(newPos) > 1e-12 ? totalCost / std::abs(newPos) : 0.0;
         } else {
-            s.realized += (px - s.avg_entry) * qty;
-            s.position -= qty;
-            s.cash += px * qty;
-            if (s.position <= 1e-12) {
-                s.position = 0.0;
+            double closeQty = std::min(std::abs(signedQty), std::abs(pos));
+            double direction = (pos > 0.0) ? 1.0 : -1.0;
+            s.realized += direction * (px - s.avg_entry) * closeQty;
+            const bool flipped = (newPos != 0.0) && ((newPos > 0.0) != (pos > 0.0));
+            if (flipped) {
+                s.avg_entry = px;
+            } else if (std::abs(newPos) <= 1e-12) {
                 s.avg_entry = 0.0;
             }
         }
+        s.position = std::abs(newPos) <= 1e-12 ? 0.0 : newPos;
     }
 
-    double unrealized(SymbolId id, Price topBid, double tickSize) const noexcept {
+    double unrealized(SymbolId id, Price mark, double tickSize) const noexcept {
         const auto& s = states_[id];
         if (s.position == 0.0) return 0.0;
-        return s.position * (topBid.toDouble(tickSize) - s.avg_entry);
+        return s.position * (mark.toDouble(tickSize) - s.avg_entry);
     }
 
 private:

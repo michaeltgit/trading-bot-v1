@@ -6,12 +6,16 @@
 #include <boost/asio/connect.hpp>
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/ssl/host_name_verification.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/ssl.hpp>
 #include <boost/beast/websocket.hpp>
 #include <boost/beast/websocket/ssl.hpp>
 #include <nlohmann/json.hpp>
 #include <openssl/ssl.h>
+
+#include <sys/socket.h>
+#include <sys/time.h>
 
 #include <chrono>
 #include <sstream>
@@ -73,6 +77,7 @@ void CoinbaseWSClient::run() noexcept {
             asio::io_context ioc;
             ssl::context ctx(ssl::context::tlsv12_client);
             ctx.set_default_verify_paths();
+            ctx.set_verify_mode(ssl::verify_peer);
             tcp::resolver resolver(ioc);
             WsStream ws(ioc, ctx);
 
@@ -84,6 +89,7 @@ void CoinbaseWSClient::run() noexcept {
                                           cfg_.host.c_str())) {
                 throw std::runtime_error("SSL_set_tlsext_host_name failed");
             }
+            ws.next_layer().set_verify_callback(ssl::host_name_verification(cfg_.host));
             ws.next_layer().handshake(ssl::stream_base::client);
 
             ws.set_option(websocket::stream_base::decorator(
@@ -104,6 +110,12 @@ void CoinbaseWSClient::run() noexcept {
 
             backoff = cfg_.backoffInitial;
 
+            // Bound blocking reads so stop() and the dead-man timer stay responsive.
+            timeval tv{};
+            tv.tv_sec = 1;
+            setsockopt(ws.next_layer().next_layer().native_handle(),
+                       SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
             auto lastSeen = std::chrono::steady_clock::now();
             boost::beast::flat_buffer buffer;
             CoinbaseMessage msg;
@@ -117,7 +129,16 @@ void CoinbaseWSClient::run() noexcept {
                 }
 
                 buffer.clear();
-                ws.read(buffer);
+                boost::beast::error_code ec;
+                ws.read(buffer, ec);
+                if (ec) {
+                    if (ec == boost::asio::error::would_block ||
+                        ec == boost::asio::error::try_again ||
+                        ec == boost::beast::error::timeout) {
+                        continue;
+                    }
+                    throw boost::system::system_error(ec);
+                }
                 auto recvTs = Clock::now();
                 ++msgsRecv_;
 
