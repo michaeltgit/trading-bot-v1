@@ -13,18 +13,18 @@ public:
     // Builds a marketable order for targetQty by walking the opposing book and
     // setting the limit at the worst level it would touch.
     template <size_t Cap>
-    static Signal computeOrder(const BoundedBook<Cap>& book, double tickSize,
-                               Side side, double targetQty) noexcept;
+    static Signal computeOrder(const BoundedBook<Cap>& book, double tickSize, Side side,
+                               double targetQty) noexcept;
 };
 
 template <size_t Cap>
-Signal OrderSizer::computeOrder(const BoundedBook<Cap>& book, double tickSize,
-                                Side side, double targetQty) noexcept {
+Signal OrderSizer::computeOrder(const BoundedBook<Cap>& book, double tickSize, Side side,
+                                double targetQty) noexcept {
     if (targetQty <= 0.0) return Signal::none();
 
     Side liquidity = (side == Side::Bid) ? Side::Ask : Side::Bid;
-    PriceLevel levels[32];
-    size_t n = book.depth(liquidity, levels, 32);
+    PriceLevel levels[MAX_BOOK_WALK];
+    size_t n = book.depth(liquidity, levels, MAX_BOOK_WALK);
     if (n == 0) return Signal::none();
 
     double accSize = 0.0;
@@ -46,4 +46,4 @@ Signal OrderSizer::computeOrder(const BoundedBook<Cap>& book, double tickSize,
     return s;
 }
 
-} // namespace trading
+}  // namespace trading

@@ -36,4 +36,4 @@ struct Metrics {
     void dump(std::ostream& os) const;
 };
 
-} // namespace trading
+}  // namespace trading

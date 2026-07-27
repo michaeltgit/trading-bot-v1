@@ -39,4 +39,4 @@ struct CoinbaseMessage {
     std::string error_message;
 };
 
-} // namespace trading
+}  // namespace trading

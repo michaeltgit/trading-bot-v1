@@ -6,15 +6,16 @@ TabWidth: 4
 UseTab: Never
 ColumnLimit: 100
 AccessModifierOffset: -4
-AllowShortFunctionsOnASingleLine: Empty
-AllowShortIfStatementsOnASingleLine: Never
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: WithoutElse
 AllowShortLoopsOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: true
 BreakBeforeBraces: Attach
 DerivePointerAlignment: false
 PointerAlignment: Left
 ReflowComments: true
 SortIncludes: CaseSensitive
-IncludeBlocks: Regroup
+IncludeBlocks: Preserve
 IncludeCategories:
   - Regex: '^<[^/]+>$'
     Priority: 1

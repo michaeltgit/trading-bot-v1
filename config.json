@@ -14,7 +14,8 @@
   "threading": {
     "network_core": -1,
     "strategy_core": -1,
-    "strategy_busy_spin": false
+    "strategy_busy_spin": true,
+    "strategy_sleep_us": 10
   },
 
   "strategy": {

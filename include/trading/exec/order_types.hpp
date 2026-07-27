@@ -25,4 +25,4 @@ struct ExecutionReport {
     Timestamp completedNs;
 };
 
-} // namespace trading
+}  // namespace trading

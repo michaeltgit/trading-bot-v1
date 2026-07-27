@@ -19,4 +19,4 @@ public:
     }
 };
 
-} // namespace trading
+}  // namespace trading

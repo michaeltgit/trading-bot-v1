@@ -24,14 +24,14 @@ std::vector<std::string> readLines(const char* name) {
     return out;
 }
 
-} // namespace
+}  // namespace
 
 TEST_CASE("Replay a recorded tick stream through the strategy", "[replay]") {
     auto lines = readLines("btcusd_replay.jsonl");
     REQUIRE_FALSE(lines.empty());
 
     CoinbaseParser parser;
-    BoundedBook<4096> book(0.01);
+    BoundedBook<4096> book;
     StrategyParams params;
     ImbalanceStrategy strategy(params);
     strategy.setSymbol(0, 0.01);
@@ -59,8 +59,7 @@ TEST_CASE("Replay a recorded tick stream through the strategy", "[replay]") {
                     book.update(c.side, Price::fromDouble(c.price, 0.01), Qty{c.qty});
                 }
                 break;
-            default:
-                continue;
+            default: continue;
         }
 
         Signal s = strategy.onMarketUpdate(book, ts);
@@ -77,7 +76,7 @@ TEST_CASE("Replay is deterministic across runs", "[replay]") {
 
     auto run = [&]() -> std::vector<double> {
         CoinbaseParser parser;
-        BoundedBook<4096> book(0.01);
+        BoundedBook<4096> book;
         StrategyParams params;
         ImbalanceStrategy strategy(params);
         strategy.setSymbol(0, 0.01);

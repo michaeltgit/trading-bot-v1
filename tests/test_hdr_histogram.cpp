@@ -43,7 +43,8 @@ TEST_CASE("HdrHistogram handles zero/negative gracefully", "[hdr]") {
 
 TEST_CASE("HdrHistogram percentiles are accurate", "[hdr]") {
     HdrHistogram h;
-    for (int i = 1; i <= 100000; ++i) h.recordNs(i);
+    for (int i = 1; i <= 100000; ++i)
+        h.recordNs(i);
     int64_t p50 = h.percentileNs(50);
     int64_t p99 = h.percentileNs(99);
     REQUIRE(p50 > 48000);

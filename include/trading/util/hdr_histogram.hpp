@@ -14,9 +14,9 @@ namespace trading {
 // record while a reader dumps.
 class HdrHistogram {
 public:
-    static constexpr int SUB_BITS = 5;                       // 32 sub-buckets per octave
+    static constexpr int SUB_BITS = 5;  // 32 sub-buckets per octave
     static constexpr size_t SUB_COUNT = size_t{1} << SUB_BITS;
-    static constexpr size_t NUM_CELLS = 64 * SUB_COUNT;      // upper bound on index range
+    static constexpr size_t NUM_CELLS = 64 * SUB_COUNT;  // upper bound on index range
 
     HdrHistogram() = default;
 
@@ -32,10 +32,14 @@ public:
     }
 
     uint64_t count() const noexcept { return count_.load(std::memory_order_relaxed); }
-    int64_t max() const noexcept { return static_cast<int64_t>(max_.load(std::memory_order_relaxed)); }
+    int64_t max() const noexcept {
+        return static_cast<int64_t>(max_.load(std::memory_order_relaxed));
+    }
     double mean() const noexcept {
         uint64_t n = count();
-        return n ? static_cast<double>(sum_.load(std::memory_order_relaxed)) / static_cast<double>(n) : 0.0;
+        return n ? static_cast<double>(sum_.load(std::memory_order_relaxed)) /
+                       static_cast<double>(n)
+                 : 0.0;
     }
 
     int64_t percentileNs(double pct) const noexcept {
@@ -55,21 +59,18 @@ public:
         return mx;
     }
 
-    void dump(std::ostream& os, const std::string& name) const {
-        os << name
-           << " n=" << count()
-           << " p50=" << percentileNs(50)
-           << "ns p95=" << percentileNs(95)
-           << "ns p99=" << percentileNs(99)
-           << "ns p99.9=" << percentileNs(99.9)
-           << "ns max=" << max() << "ns";
+    void dump(std::ostream& os, const std::string& name, const char* unit = "ns") const {
+        os << name << " n=" << count() << " mean=" << static_cast<int64_t>(mean()) << unit
+           << " p50=" << percentileNs(50) << unit << " p95=" << percentileNs(95) << unit
+           << " p99=" << percentileNs(99) << unit << " p99.9=" << percentileNs(99.9) << unit
+           << " max=" << max() << unit;
     }
 
 private:
     static size_t indexFor(uint64_t v) noexcept {
         if (v < SUB_COUNT) return static_cast<size_t>(v);
-        int exp = 63 - __builtin_clzll(v);          // position of leading set bit (>= SUB_BITS)
-        int octave = exp - SUB_BITS;                 // >= 0
+        int exp = 63 - __builtin_clzll(v);  // position of leading set bit (>= SUB_BITS)
+        int octave = exp - SUB_BITS;        // >= 0
         size_t sub = static_cast<size_t>(v >> octave) - SUB_COUNT;  // in [0, SUB_COUNT)
         size_t idx = SUB_COUNT * static_cast<size_t>(octave + 1) + sub;
         return idx < NUM_CELLS ? idx : NUM_CELLS - 1;
@@ -91,4 +92,4 @@ private:
     std::atomic<uint64_t> max_{0};
 };
 
-} // namespace trading
+}  // namespace trading

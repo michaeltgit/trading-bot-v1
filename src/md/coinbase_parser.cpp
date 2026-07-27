@@ -13,10 +13,10 @@ namespace {
 
 CoinbaseMsgType typeFromString(std::string_view s) noexcept {
     if (s == "subscriptions") return CoinbaseMsgType::Subscriptions;
-    if (s == "snapshot")      return CoinbaseMsgType::Snapshot;
-    if (s == "l2update")      return CoinbaseMsgType::L2Update;
-    if (s == "heartbeat")     return CoinbaseMsgType::Heartbeat;
-    if (s == "error")         return CoinbaseMsgType::Error;
+    if (s == "snapshot") return CoinbaseMsgType::Snapshot;
+    if (s == "l2update") return CoinbaseMsgType::L2Update;
+    if (s == "heartbeat") return CoinbaseMsgType::Heartbeat;
+    if (s == "error") return CoinbaseMsgType::Error;
     return CoinbaseMsgType::Unknown;
 }
 
@@ -30,7 +30,7 @@ inline bool parseDouble(std::string_view s, double& out) noexcept {
     return end != buf;
 }
 
-} // namespace
+}  // namespace
 
 CoinbaseParser::CoinbaseParser() {
     padded_.reserve(4096);
@@ -82,8 +82,10 @@ Error CoinbaseParser::parse(std::string_view jsonText, CoinbaseMessage& out) noe
                             if (item.get_string().get(sv)) continue;
                             double v;
                             if (!parseDouble(sv, v)) continue;
-                            if (slot == 0) entry.price = v;
-                            else if (slot == 1) entry.qty = v;
+                            if (slot == 0)
+                                entry.price = v;
+                            else if (slot == 1)
+                                entry.qty = v;
                             ++slot;
                         }
                         if (slot >= 2) out.bids.push_back(entry);
@@ -101,8 +103,10 @@ Error CoinbaseParser::parse(std::string_view jsonText, CoinbaseMessage& out) noe
                             if (item.get_string().get(sv)) continue;
                             double v;
                             if (!parseDouble(sv, v)) continue;
-                            if (slot == 0) entry.price = v;
-                            else if (slot == 1) entry.qty = v;
+                            if (slot == 0)
+                                entry.price = v;
+                            else if (slot == 1)
+                                entry.qty = v;
                             ++slot;
                         }
                         if (slot >= 2) out.asks.push_back(entry);
@@ -126,8 +130,10 @@ Error CoinbaseParser::parse(std::string_view jsonText, CoinbaseMessage& out) noe
                             } else {
                                 double v;
                                 if (!parseDouble(sv, v)) continue;
-                                if (slot == 1) cg.price = v;
-                                else if (slot == 2) cg.qty = v;
+                                if (slot == 1)
+                                    cg.price = v;
+                                else if (slot == 2)
+                                    cg.qty = v;
                             }
                             ++slot;
                         }
@@ -151,8 +157,7 @@ Error CoinbaseParser::parse(std::string_view jsonText, CoinbaseMessage& out) noe
                 break;
             }
             case CoinbaseMsgType::Subscriptions:
-            case CoinbaseMsgType::Unknown:
-                break;
+            case CoinbaseMsgType::Unknown: break;
         }
     } catch (const simdjson_error&) {
         return Error::ParseMalformedJson;
@@ -160,4 +165,4 @@ Error CoinbaseParser::parse(std::string_view jsonText, CoinbaseMessage& out) noe
     return Error::Ok;
 }
 
-} // namespace trading
+}  // namespace trading

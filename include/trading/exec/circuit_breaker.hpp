@@ -14,8 +14,10 @@ public:
         if (windowMessages_ == 0) return;
         uint64_t n = msgs_.fetch_add(1, std::memory_order_relaxed) + 1;
         if (n % windowMessages_ == 0) {
-            errors_.store(0, std::memory_order_relaxed);
-            tripped_.store(false, std::memory_order_release);
+            // only a clean window untrips
+            if (errors_.exchange(0, std::memory_order_relaxed) == 0) {
+                tripped_.store(false, std::memory_order_release);
+            }
         }
     }
 
@@ -41,4 +43,4 @@ private:
     std::atomic<bool> tripped_{false};
 };
 
-} // namespace trading
+}  // namespace trading

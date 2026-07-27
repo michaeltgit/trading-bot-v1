@@ -21,4 +21,4 @@ private:
     std::string padded_;
 };
 
-} // namespace trading
+}  // namespace trading

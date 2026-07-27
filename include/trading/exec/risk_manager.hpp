@@ -10,8 +10,8 @@ namespace trading {
 class RiskManager {
 public:
     // initialCash < 0 leaves the cash check disabled.
-    void configure(SymbolId id, double maxPosition,
-                   double initialCash = -1.0, double tickSize = 0.0) noexcept {
+    void configure(SymbolId id, double maxPosition, double initialCash = -1.0,
+                   double tickSize = 0.0) noexcept {
         if (id >= MAX_SYMBOLS) return;
         maxPositions_[id] = maxPosition;
         if (initialCash >= 0.0) {
@@ -40,12 +40,8 @@ public:
         if (cashEnabled_) cash_[r.symbolId] -= signedQty * r.execPrice.toDouble(tick_);
     }
 
-    double position(SymbolId id) const noexcept {
-        return id < MAX_SYMBOLS ? positions_[id] : 0.0;
-    }
-    double cash(SymbolId id) const noexcept {
-        return id < MAX_SYMBOLS ? cash_[id] : 0.0;
-    }
+    double position(SymbolId id) const noexcept { return id < MAX_SYMBOLS ? positions_[id] : 0.0; }
+    double cash(SymbolId id) const noexcept { return id < MAX_SYMBOLS ? cash_[id] : 0.0; }
 
 private:
     std::array<double, MAX_SYMBOLS> positions_{};
@@ -55,4 +51,4 @@ private:
     bool cashEnabled_ = false;
 };
 
-} // namespace trading
+}  // namespace trading

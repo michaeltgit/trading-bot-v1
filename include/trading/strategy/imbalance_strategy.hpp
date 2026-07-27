@@ -59,4 +59,4 @@ private:
     bool skip_next_signal_ = false;
 };
 
-} // namespace trading
+}  // namespace trading

@@ -20,7 +20,8 @@ TEST_CASE("CircuitBreaker trips at threshold", "[breaker]") {
 
 TEST_CASE("CircuitBreaker resets on demand", "[breaker]") {
     CircuitBreaker b(2, 100);
-    b.recordError(); b.recordError();
+    b.recordError();
+    b.recordError();
     REQUIRE(b.isTripped());
     b.reset();
     REQUIRE_FALSE(b.isTripped());
@@ -28,9 +29,26 @@ TEST_CASE("CircuitBreaker resets on demand", "[breaker]") {
 
 TEST_CASE("CircuitBreaker window rolls errors", "[breaker]") {
     CircuitBreaker b(5, 10);
-    for (int i = 0; i < 4; ++i) b.recordError();
+    for (int i = 0; i < 4; ++i)
+        b.recordError();
     REQUIRE_FALSE(b.isTripped());
-    for (int i = 0; i < 10; ++i) b.recordMessage();
-    for (int i = 0; i < 4; ++i) b.recordError();
+    for (int i = 0; i < 10; ++i)
+        b.recordMessage();
+    for (int i = 0; i < 4; ++i)
+        b.recordError();
+    REQUIRE_FALSE(b.isTripped());
+}
+
+TEST_CASE("CircuitBreaker stays tripped through a dirty window, resets after a clean one",
+          "[breaker]") {
+    CircuitBreaker b(2, 10);
+    b.recordError();
+    b.recordError();
+    REQUIRE(b.isTripped());
+    for (int i = 0; i < 10; ++i)
+        b.recordMessage();  // window that saw the errors
+    REQUIRE(b.isTripped());
+    for (int i = 0; i < 10; ++i)
+        b.recordMessage();  // clean window
     REQUIRE_FALSE(b.isTripped());
 }

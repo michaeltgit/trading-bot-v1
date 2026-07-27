@@ -1,5 +1,8 @@
 /build/
+/build-rel/
 /Testing/
+
+CMakeUserPresets.json
 
 CMakeCache.txt
 CMakeFiles/

@@ -51,8 +51,14 @@ public:
 
     Qty operator+(Qty o) const noexcept { return Qty{v_ + o.v_}; }
     Qty operator-(Qty o) const noexcept { return Qty{v_ - o.v_}; }
-    Qty& operator+=(Qty o) noexcept { v_ += o.v_; return *this; }
-    Qty& operator-=(Qty o) noexcept { v_ -= o.v_; return *this; }
+    Qty& operator+=(Qty o) noexcept {
+        v_ += o.v_;
+        return *this;
+    }
+    Qty& operator-=(Qty o) noexcept {
+        v_ -= o.v_;
+        return *this;
+    }
 
     constexpr bool operator==(Qty o) const noexcept { return v_ == o.v_; }
     constexpr bool operator<(Qty o) const noexcept { return v_ < o.v_; }
@@ -86,4 +92,9 @@ struct PriceLevel {
     Qty qty;
 };
 
-} // namespace trading
+// Deepest ladder walked when sizing or simulating an order. The fill simulator
+// must walk at least as deep as the sizer, or a deep order would spuriously
+// partial-fill against the very book it was sized from.
+inline constexpr size_t MAX_BOOK_WALK = 32;
+
+}  // namespace trading

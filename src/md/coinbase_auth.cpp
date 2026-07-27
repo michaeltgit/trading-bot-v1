@@ -19,7 +19,8 @@ std::string base64Decode(std::string_view in) noexcept {
                             static_cast<int>(in.size()));
     if (n < 0) return "";
     size_t pad = 0;
-    for (auto it = in.rbegin(); it != in.rend() && *it == '='; ++it) ++pad;
+    for (auto it = in.rbegin(); it != in.rend() && *it == '='; ++it)
+        ++pad;
     out.resize(static_cast<size_t>(n) - pad);
     return out;
 }
@@ -27,14 +28,14 @@ std::string base64Decode(std::string_view in) noexcept {
 std::string base64Encode(const unsigned char* data, size_t n) noexcept {
     std::string out;
     out.resize((n + 2) / 3 * 4);
-    int written = EVP_EncodeBlock(reinterpret_cast<unsigned char*>(out.data()), data,
-                                  static_cast<int>(n));
+    int written =
+        EVP_EncodeBlock(reinterpret_cast<unsigned char*>(out.data()), data, static_cast<int>(n));
     if (written < 0) return "";
     out.resize(static_cast<size_t>(written));
     return out;
 }
 
-} // namespace
+}  // namespace
 
 std::string CoinbaseAuth::sign(std::string_view timestamp) const noexcept {
     if (!hasCredentials()) return {};
@@ -49,11 +50,9 @@ std::string CoinbaseAuth::sign(std::string_view timestamp) const noexcept {
 
     std::array<unsigned char, EVP_MAX_MD_SIZE> mac{};
     unsigned int maclen = 0;
-    HMAC(EVP_sha256(),
-         secret.data(), static_cast<int>(secret.size()),
-         reinterpret_cast<const unsigned char*>(prehash.data()),
-         prehash.size(),
-         mac.data(), &maclen);
+    HMAC(EVP_sha256(), secret.data(), static_cast<int>(secret.size()),
+         reinterpret_cast<const unsigned char*>(prehash.data()), prehash.size(), mac.data(),
+         &maclen);
 
     return base64Encode(mac.data(), maclen);
 }
@@ -63,11 +62,7 @@ CoinbaseAuth CoinbaseAuth::fromEnv() noexcept {
     const char* secret = std::getenv("COINBASE_API_SECRET");
     const char* pass = std::getenv("COINBASE_API_PASSPHRASE");
     if (!key || !secret) return CoinbaseAuth{};
-    return CoinbaseAuth{
-        std::string{key},
-        std::string{secret},
-        std::string{pass ? pass : ""}
-    };
+    return CoinbaseAuth{std::string{key}, std::string{secret}, std::string{pass ? pass : ""}};
 }
 
-} // namespace trading
+}  // namespace trading

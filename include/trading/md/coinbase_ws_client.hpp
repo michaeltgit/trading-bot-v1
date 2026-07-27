@@ -27,12 +27,14 @@ struct CoinbaseWSConfig {
     std::chrono::seconds heartbeatTimeout{30};
     std::chrono::milliseconds backoffInitial{1000};
     std::chrono::milliseconds backoffMax{30000};
+    int coreId = -1;  // pin the network thread to this core when >= 0
 };
 
 class CoinbaseWSClient {
 public:
     using MessageCallback = std::function<void(const CoinbaseMessage&, Timestamp recvTs)>;
     using ReconnectCallback = std::function<void()>;
+    using ParseErrorCallback = std::function<void()>;
 
     CoinbaseWSClient(CoinbaseWSConfig cfg, CoinbaseAuth auth) noexcept;
     ~CoinbaseWSClient();
@@ -42,14 +44,10 @@ public:
 
     void setMessageCallback(MessageCallback cb) noexcept { onMessage_ = std::move(cb); }
     void setReconnectCallback(ReconnectCallback cb) noexcept { onReconnect_ = std::move(cb); }
+    void setParseErrorCallback(ParseErrorCallback cb) noexcept { onParseError_ = std::move(cb); }
 
     void start();
     void stop();
-
-    uint64_t messagesReceived() const noexcept { return msgsRecv_.load(std::memory_order_relaxed); }
-    uint64_t parseErrors() const noexcept { return parseErrs_.load(std::memory_order_relaxed); }
-    uint64_t reconnects() const noexcept { return reconnects_.load(std::memory_order_relaxed); }
-    uint64_t deadManReconnects() const noexcept { return deadManReconnects_.load(std::memory_order_relaxed); }
 
 private:
     void run() noexcept;
@@ -60,15 +58,11 @@ private:
 
     MessageCallback onMessage_;
     ReconnectCallback onReconnect_;
+    ParseErrorCallback onParseError_;
 
     std::atomic<bool> running_{false};
     std::atomic<bool> hasConnectedOnce_{false};
     std::thread thread_;
-
-    std::atomic<uint64_t> msgsRecv_{0};
-    std::atomic<uint64_t> parseErrs_{0};
-    std::atomic<uint64_t> reconnects_{0};
-    std::atomic<uint64_t> deadManReconnects_{0};
 };
 
-} // namespace trading
+}  // namespace trading

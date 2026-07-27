@@ -62,4 +62,4 @@ private:
     std::array<PnlState, MAX_SYMBOLS> states_{};
 };
 
-} // namespace trading
+}  // namespace trading

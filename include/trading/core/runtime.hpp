@@ -32,6 +32,7 @@ struct RuntimeConfig {
     int networkCoreId = -1;
     int strategyCoreId = -1;
     bool strategyBusySpin = false;
+    int strategySleepUs = 50;
 
     uint64_t circuitErrorThreshold = 20;
     uint64_t circuitWindowMsgs = 500;
@@ -74,15 +75,15 @@ public:
     void stop();
 
     const Metrics& metrics() const noexcept { return metrics_; }
-    double pnlRealized() const noexcept { return strategy_.realized(); }
-    double pnlCash() const noexcept { return strategy_.cash(); }
-    double pnlPosition() const noexcept { return strategy_.position(); }
+    double pnlRealized() const noexcept { return pnlRealized_.load(std::memory_order_relaxed); }
+    double pnlCash() const noexcept { return pnlCash_.load(std::memory_order_relaxed); }
+    double pnlPosition() const noexcept { return pnlPosition_.load(std::memory_order_relaxed); }
     double pnlUnrealized() const noexcept {
-        double pos = strategy_.position();
+        double pos = pnlPosition_.load(std::memory_order_relaxed);
         if (pos == 0.0) return 0.0;
         double mark = (pos > 0.0 ? markBid_ : markAsk_).load(std::memory_order_relaxed);
         if (mark <= 0.0) return 0.0;
-        return pos * (mark - strategy_.avgEntry());
+        return pos * (mark - pnlAvgEntry_.load(std::memory_order_relaxed));
     }
 
 private:
@@ -90,7 +91,7 @@ private:
     void strategyLoop() noexcept;
     void processEvent(const MarketEvent& ev) noexcept;
     void dispatchOrder(const Signal& sig, Timestamp now) noexcept;
-    static void pinThreadToCore(int core) noexcept;
+    void publishPnl() noexcept;
 
     RuntimeConfig cfg_;
     Metrics metrics_;
@@ -114,7 +115,14 @@ private:
     std::atomic<double> markBid_{0.0};
     std::atomic<double> markAsk_{0.0};
 
+    // PnL snapshots for the main thread's heartbeat; the strategy's own state
+    // is touched only on the strategy thread.
+    std::atomic<double> pnlCash_{0.0};
+    std::atomic<double> pnlPosition_{0.0};
+    std::atomic<double> pnlAvgEntry_{0.0};
+    std::atomic<double> pnlRealized_{0.0};
+
     OrderId nextOrderId_ = 1;
 };
 
-} // namespace trading
+}  // namespace trading

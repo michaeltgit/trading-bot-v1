@@ -8,19 +8,19 @@ using namespace trading;
 using Catch::Matchers::WithinAbs;
 
 TEST_CASE("computeOrder on empty book returns none", "[sizer]") {
-    BoundedBook<4096> book(0.01);
+    BoundedBook<4096> book;
     auto s = OrderSizer::computeOrder(book, 0.01, Side::Bid, 1.0);
     REQUIRE(s.action == SignalAction::None);
 }
 
 TEST_CASE("computeOrder rejects non-positive qty", "[sizer]") {
-    BoundedBook<4096> book(0.01);
+    BoundedBook<4096> book;
     book.update(Side::Ask, Price::fromDouble(100.0, 0.01), Qty{1.0});
     REQUIRE(OrderSizer::computeOrder(book, 0.01, Side::Bid, 0.0).action == SignalAction::None);
 }
 
 TEST_CASE("computeOrder buy walks the ask side", "[sizer]") {
-    BoundedBook<4096> book(0.01);
+    BoundedBook<4096> book;
     book.update(Side::Bid, Price::fromDouble(99.0, 0.01), Qty{100.0});
     book.update(Side::Ask, Price::fromDouble(100.0, 0.01), Qty{100.0});
 
@@ -31,7 +31,7 @@ TEST_CASE("computeOrder buy walks the ask side", "[sizer]") {
 }
 
 TEST_CASE("computeOrder sell walks the bid side", "[sizer]") {
-    BoundedBook<4096> book(0.01);
+    BoundedBook<4096> book;
     book.update(Side::Bid, Price::fromDouble(99.0, 0.01), Qty{100.0});
     book.update(Side::Ask, Price::fromDouble(100.0, 0.01), Qty{100.0});
 
@@ -42,7 +42,7 @@ TEST_CASE("computeOrder sell walks the bid side", "[sizer]") {
 }
 
 TEST_CASE("computeOrder caps at available depth and walks to worst level", "[sizer]") {
-    BoundedBook<4096> book(0.01);
+    BoundedBook<4096> book;
     book.update(Side::Ask, Price::fromDouble(100.0, 0.01), Qty{0.3});
     book.update(Side::Ask, Price::fromDouble(100.5, 0.01), Qty{0.2});
 

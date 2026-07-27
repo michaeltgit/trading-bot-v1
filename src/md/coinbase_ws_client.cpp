@@ -1,5 +1,6 @@
 #include "trading/md/coinbase_ws_client.hpp"
 
+#include "trading/core/affinity.hpp"
 #include "trading/core/clock.hpp"
 #include "trading/core/logger.hpp"
 
@@ -18,7 +19,6 @@
 #include <sys/time.h>
 
 #include <chrono>
-#include <sstream>
 #include <string>
 
 namespace trading {
@@ -39,7 +39,8 @@ std::string buildSubscribeMessage(const CoinbaseWSConfig& cfg, const CoinbaseAut
 
     if (auth.hasCredentials()) {
         auto ts = std::to_string(std::chrono::duration_cast<std::chrono::seconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count());
+                                     std::chrono::system_clock::now().time_since_epoch())
+                                     .count());
         body["signature"] = auth.sign(ts);
         body["key"] = auth.key();
         body["passphrase"] = auth.passphrase();
@@ -48,7 +49,7 @@ std::string buildSubscribeMessage(const CoinbaseWSConfig& cfg, const CoinbaseAut
     return body.dump();
 }
 
-} // namespace
+}  // namespace
 
 CoinbaseWSClient::CoinbaseWSClient(CoinbaseWSConfig cfg, CoinbaseAuth auth) noexcept
     : cfg_(std::move(cfg)), auth_(std::move(auth)) {}
@@ -59,7 +60,10 @@ CoinbaseWSClient::~CoinbaseWSClient() {
 
 void CoinbaseWSClient::start() {
     if (running_.exchange(true)) return;
-    thread_ = std::thread([this] { run(); });
+    thread_ = std::thread([this] {
+        pinThreadToCore(cfg_.coreId);
+        run();
+    });
 }
 
 void CoinbaseWSClient::stop() {
@@ -85,18 +89,16 @@ void CoinbaseWSClient::run() noexcept {
             asio::connect(ws.next_layer().next_layer(), results.begin(), results.end());
 
             // Coinbase rejects handshakes without SNI.
-            if (!SSL_set_tlsext_host_name(ws.next_layer().native_handle(),
-                                          cfg_.host.c_str())) {
+            if (!SSL_set_tlsext_host_name(ws.next_layer().native_handle(), cfg_.host.c_str())) {
                 throw std::runtime_error("SSL_set_tlsext_host_name failed");
             }
             ws.next_layer().set_verify_callback(ssl::host_name_verification(cfg_.host));
             ws.next_layer().handshake(ssl::stream_base::client);
 
-            ws.set_option(websocket::stream_base::decorator(
-                [this](websocket::request_type& req) {
-                    req.set(boost::beast::http::field::host, cfg_.host);
-                    req.set(boost::beast::http::field::user_agent, "trading-engine/1.0");
-                }));
+            ws.set_option(websocket::stream_base::decorator([this](websocket::request_type& req) {
+                req.set(boost::beast::http::field::host, cfg_.host);
+                req.set(boost::beast::http::field::user_agent, "trading-engine/1.0");
+            }));
             ws.handshake(cfg_.host, "/");
 
             ws.write(asio::buffer(buildSubscribeMessage(cfg_, auth_)));
@@ -104,7 +106,6 @@ void CoinbaseWSClient::run() noexcept {
             TRADING_LOG_INFO("coinbase-ws connected and subscribed");
 
             if (hasConnectedOnce_.exchange(true)) {
-                ++reconnects_;
                 if (onReconnect_) onReconnect_();
             }
 
@@ -113,8 +114,8 @@ void CoinbaseWSClient::run() noexcept {
             // Bound blocking reads so stop() and the dead-man timer stay responsive.
             timeval tv{};
             tv.tv_sec = 1;
-            setsockopt(ws.next_layer().next_layer().native_handle(),
-                       SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+            setsockopt(ws.next_layer().next_layer().native_handle(), SOL_SOCKET, SO_RCVTIMEO, &tv,
+                       sizeof(tv));
 
             auto lastSeen = std::chrono::steady_clock::now();
             boost::beast::flat_buffer buffer;
@@ -124,28 +125,26 @@ void CoinbaseWSClient::run() noexcept {
                 auto now = std::chrono::steady_clock::now();
                 if (now - lastSeen > cfg_.heartbeatTimeout) {
                     TRADING_LOG_WARN("coinbase-ws heartbeat timeout, forcing reconnect");
-                    ++deadManReconnects_;
                     break;
                 }
 
-                buffer.clear();
                 boost::beast::error_code ec;
                 ws.read(buffer, ec);
                 if (ec) {
                     if (ec == boost::asio::error::would_block ||
-                        ec == boost::asio::error::try_again ||
-                        ec == boost::beast::error::timeout) {
+                        ec == boost::asio::error::try_again || ec == boost::beast::error::timeout) {
+                        // A timeout can land mid-frame; keep the buffer for the next read.
                         continue;
                     }
                     throw boost::system::system_error(ec);
                 }
                 auto recvTs = Clock::now();
-                ++msgsRecv_;
 
                 auto text = boost::beast::buffers_to_string(buffer.data());
+                buffer.clear();
                 Error err = parser_.parse(text, msg);
                 if (err != Error::Ok) {
-                    ++parseErrs_;
+                    if (onParseError_) onParseError_();
                     continue;
                 }
 
@@ -160,10 +159,16 @@ void CoinbaseWSClient::run() noexcept {
         } catch (const std::exception& e) {
             if (!running_.load(std::memory_order_acquire)) break;
             TRADING_LOG_WARN("coinbase-ws disconnect, backing off");
-            std::this_thread::sleep_for(backoff);
+            // sleep in slices so stop() isn't held up by a long backoff
+            auto remaining = backoff;
+            while (remaining.count() > 0 && running_.load(std::memory_order_acquire)) {
+                auto slice = std::min(remaining, std::chrono::milliseconds{100});
+                std::this_thread::sleep_for(slice);
+                remaining -= slice;
+            }
             backoff = std::min(backoff * 2, cfg_.backoffMax);
         }
     }
 }
 
-} // namespace trading
+}  // namespace trading

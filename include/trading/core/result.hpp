@@ -11,8 +11,7 @@ namespace trading {
 template <typename T>
 class Result {
 public:
-    Result(T value) noexcept(std::is_nothrow_move_constructible_v<T>)
-        : state_(std::move(value)) {}
+    Result(T value) noexcept(std::is_nothrow_move_constructible_v<T>) : state_(std::move(value)) {}
     Result(Error err) noexcept : state_(err) {}
 
     bool ok() const noexcept { return std::holds_alternative<T>(state_); }
@@ -22,9 +21,7 @@ public:
     const T& value() const& noexcept { return std::get<T>(state_); }
     T&& value() && noexcept { return std::get<T>(std::move(state_)); }
 
-    Error error() const noexcept {
-        return ok() ? Error::Ok : std::get<Error>(state_);
-    }
+    Error error() const noexcept { return ok() ? Error::Ok : std::get<Error>(state_); }
 
 private:
     std::variant<T, Error> state_;
@@ -44,4 +41,4 @@ private:
     Error err_;
 };
 
-} // namespace trading
+}  // namespace trading

@@ -4,8 +4,7 @@
 
 namespace trading {
 
-ImbalanceStrategy::ImbalanceStrategy(const StrategyParams& params) noexcept
-    : params_(params) {
+ImbalanceStrategy::ImbalanceStrategy(const StrategyParams& params) noexcept : params_(params) {
     if (params_.smoothing_window == 0) params_.smoothing_window = 1;
     if (params_.smoothing_window > MAX_ROLLING) params_.smoothing_window = MAX_ROLLING;
     if (params_.depth_levels == 0) params_.depth_levels = 1;
@@ -38,8 +37,10 @@ Signal ImbalanceStrategy::onMarketUpdate(const BoundedBook<Cap>& book, Timestamp
     double spread_bps = (bestAsk - bestBid) / mid * 1e4;
 
     double bidSz = 0.0, askSz = 0.0;
-    for (size_t i = 0; i < nb; ++i) bidSz += bidBuf[i].qty.value();
-    for (size_t i = 0; i < na; ++i) askSz += askBuf[i].qty.value();
+    for (size_t i = 0; i < nb; ++i)
+        bidSz += bidBuf[i].qty.value();
+    for (size_t i = 0; i < na; ++i)
+        askSz += askBuf[i].qty.value();
     double denom = bidSz + askSz;
     if (denom <= 0.0) return Signal::none();
     double imbalance = (bidSz - askSz) / denom;  // [-1, 1], + means bid-heavy
@@ -48,7 +49,8 @@ Signal ImbalanceStrategy::onMarketUpdate(const BoundedBook<Cap>& book, Timestamp
     rolling_head_ = (rolling_head_ + 1) % params_.smoothing_window;
     if (rolling_count_ < params_.smoothing_window) ++rolling_count_;
     double smoothed = 0.0;
-    for (size_t i = 0; i < rolling_count_; ++i) smoothed += rolling_[i];
+    for (size_t i = 0; i < rolling_count_; ++i)
+        smoothed += rolling_[i];
     smoothed /= static_cast<double>(rolling_count_);
 
     if (skip_next_signal_) {
@@ -99,6 +101,7 @@ Signal ImbalanceStrategy::emit(Signal s, Timestamp now) noexcept {
     return s;
 }
 
-template Signal ImbalanceStrategy::onMarketUpdate<4096>(const BoundedBook<4096>&, Timestamp) noexcept;
+template Signal ImbalanceStrategy::onMarketUpdate<4096>(const BoundedBook<4096>&,
+                                                        Timestamp) noexcept;
 
-} // namespace trading
+}  // namespace trading

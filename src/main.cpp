@@ -46,6 +46,7 @@ Result<RuntimeConfig> loadConfig(const std::string& path) {
         cfg.networkCoreId = t.value("network_core", -1);
         cfg.strategyCoreId = t.value("strategy_core", -1);
         cfg.strategyBusySpin = t.value("strategy_busy_spin", false);
+        cfg.strategySleepUs = t.value("strategy_sleep_us", 50);
     }
 
     if (j.contains("strategy")) {
@@ -77,17 +78,28 @@ Result<RuntimeConfig> loadConfig(const std::string& path) {
     if (cfg.tick_size <= 0.0) return Error::ConfigInvalidValue;
     if (cfg.max_position <= 0.0) return Error::ConfigInvalidValue;
     if (cfg.initial_cash < 0.0) return Error::ConfigInvalidValue;
-    if (symbolId < 0 || static_cast<size_t>(symbolId) >= MAX_SYMBOLS) return Error::ConfigInvalidValue;
-    if (cfg.strategy.depth_levels == 0 || cfg.strategy.smoothing_window == 0) return Error::ConfigInvalidValue;
-    if (cfg.strategy.trade_fraction <= 0.0 || cfg.strategy.trade_fraction > 1.0) return Error::ConfigInvalidValue;
-    if (cfg.strategy.entry_imbalance < 0.0 || cfg.strategy.entry_imbalance > 1.0) return Error::ConfigInvalidValue;
-    if (cfg.strategy.take_profit_bps <= 0.0 || cfg.strategy.stop_loss_bps <= 0.0) return Error::ConfigInvalidValue;
+    if (symbolId < 0 || static_cast<size_t>(symbolId) >= MAX_SYMBOLS)
+        return Error::ConfigInvalidValue;
+    if (cfg.strategy.depth_levels == 0 || cfg.strategy.smoothing_window == 0)
+        return Error::ConfigInvalidValue;
+    if (cfg.strategy.depth_levels > ImbalanceStrategy::MAX_DEPTH) return Error::ConfigInvalidValue;
+    if (cfg.strategy.smoothing_window > ImbalanceStrategy::MAX_ROLLING)
+        return Error::ConfigInvalidValue;
+    if (cfg.circuitErrorThreshold == 0 || cfg.circuitWindowMsgs == 0)
+        return Error::ConfigInvalidValue;
+    if (cfg.strategySleepUs <= 0) return Error::ConfigInvalidValue;
+    if (cfg.strategy.trade_fraction <= 0.0 || cfg.strategy.trade_fraction > 1.0)
+        return Error::ConfigInvalidValue;
+    if (cfg.strategy.entry_imbalance < 0.0 || cfg.strategy.entry_imbalance > 1.0)
+        return Error::ConfigInvalidValue;
+    if (cfg.strategy.take_profit_bps <= 0.0 || cfg.strategy.stop_loss_bps <= 0.0)
+        return Error::ConfigInvalidValue;
     if (cfg.ws.host.empty() || cfg.ws.port.empty()) return Error::ConfigInvalidValue;
 
     return cfg;
 }
 
-} // namespace
+}  // namespace
 
 int main(int argc, char** argv) {
     std::signal(SIGINT, handleSignal);
@@ -97,8 +109,8 @@ int main(int argc, char** argv) {
 
     auto cfgResult = loadConfig(cfgPath);
     if (!cfgResult) {
-        std::cerr << "Failed to load config (" << cfgPath << "): "
-                  << toString(cfgResult.error()) << "\n";
+        std::cerr << "Failed to load config (" << cfgPath << "): " << toString(cfgResult.error())
+                  << "\n";
         return 1;
     }
     RuntimeConfig cfg = std::move(cfgResult).value();
@@ -118,12 +130,9 @@ int main(int argc, char** argv) {
             const auto& m = rt.metrics();
             double pos = rt.pnlPosition();
             std::cerr << "[heartbeat] msgs=" << m.msgsReceived.load()
-                      << " signals=" << m.signalsGenerated.load()
-                      << " fills=" << m.fills.load()
-                      << " rej=" << m.ordersRejected.load()
-                      << " cash=" << rt.pnlCash()
-                      << " pos=" << pos
-                      << " realized=" << rt.pnlRealized();
+                      << " signals=" << m.signalsGenerated.load() << " fills=" << m.fills.load()
+                      << " rej=" << m.ordersRejected.load() << " cash=" << rt.pnlCash()
+                      << " pos=" << pos << " realized=" << rt.pnlRealized();
             if (pos != 0.0) std::cerr << " unrealized=" << rt.pnlUnrealized();
             std::cerr << "\n";
             lastHeartbeat = now;
@@ -140,8 +149,7 @@ int main(int argc, char** argv) {
 
     std::cerr << "=== final metrics ===\n";
     rt.metrics().dump(std::cerr);
-    std::cerr << "pnl: cash=" << rt.pnlCash()
-              << " position=" << rt.pnlPosition()
+    std::cerr << "pnl: cash=" << rt.pnlCash() << " position=" << rt.pnlPosition()
               << " realized=" << rt.pnlRealized();
     if (rt.pnlPosition() != 0.0) std::cerr << " unrealized=" << rt.pnlUnrealized();
     std::cerr << "\n";

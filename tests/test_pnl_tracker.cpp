@@ -9,17 +9,25 @@ using Catch::Matchers::WithinAbs;
 namespace {
 ExecutionReport buyFill(double px, double qty) {
     ExecutionReport r;
-    r.id = 1; r.symbolId = 0; r.side = Side::Bid; r.isFill = true;
-    r.execPrice = Price::fromDouble(px, 0.01); r.execQty = Qty{qty};
+    r.id = 1;
+    r.symbolId = 0;
+    r.side = Side::Bid;
+    r.isFill = true;
+    r.execPrice = Price::fromDouble(px, 0.01);
+    r.execQty = Qty{qty};
     return r;
 }
 ExecutionReport sellFill(double px, double qty) {
     ExecutionReport r;
-    r.id = 2; r.symbolId = 0; r.side = Side::Ask; r.isFill = true;
-    r.execPrice = Price::fromDouble(px, 0.01); r.execQty = Qty{qty};
+    r.id = 2;
+    r.symbolId = 0;
+    r.side = Side::Ask;
+    r.isFill = true;
+    r.execPrice = Price::fromDouble(px, 0.01);
+    r.execQty = Qty{qty};
     return r;
 }
-} // namespace
+}  // namespace
 
 TEST_CASE("PnL buy then sell realizes profit", "[pnl]") {
     PnlTracker t;
@@ -90,7 +98,10 @@ TEST_CASE("Cancel report is ignored", "[pnl]") {
     PnlTracker t;
     t.seedCash(0, 1000.0);
     ExecutionReport cxl;
-    cxl.id = 1; cxl.symbolId = 0; cxl.side = Side::Bid; cxl.isFill = false;
+    cxl.id = 1;
+    cxl.symbolId = 0;
+    cxl.side = Side::Bid;
+    cxl.isFill = false;
     t.onFill(cxl, 0.01);
     REQUIRE(t.state(0).position == 0.0);
     REQUIRE(t.state(0).cash == 1000.0);

@@ -16,7 +16,7 @@ std::string readFile(const char* name) {
     ss << in.rdbuf();
     return ss.str();
 }
-} // namespace
+}  // namespace
 
 TEST_CASE("Parses subscriptions ack", "[coinbase][parser]") {
     CoinbaseParser p;
@@ -49,7 +49,7 @@ TEST_CASE("Parses l2update fixture", "[coinbase][parser]") {
     REQUIRE(msg.changes[0].side == Side::Bid);
     REQUIRE(msg.changes[0].price == 64999.50);
     REQUIRE(msg.changes[1].side == Side::Ask);
-    REQUIRE(msg.changes[1].qty == 0.0); // removal
+    REQUIRE(msg.changes[1].qty == 0.0);  // removal
 }
 
 TEST_CASE("Parses heartbeat fixture", "[coinbase][parser]") {
@@ -91,6 +91,6 @@ TEST_CASE("Parser reuses buffers across calls", "[coinbase][parser]") {
     REQUIRE(msg.bids.size() == 2);
 
     REQUIRE(p.parse(upd, msg) == Error::Ok);
-    REQUIRE(msg.bids.empty()); // cleared
+    REQUIRE(msg.bids.empty());  // cleared
     REQUIRE(msg.changes.size() == 3);
 }

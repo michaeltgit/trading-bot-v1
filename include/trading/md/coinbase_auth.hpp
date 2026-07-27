@@ -28,4 +28,4 @@ private:
     std::string passphrase_;
 };
 
-} // namespace trading
+}  // namespace trading

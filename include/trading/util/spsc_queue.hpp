@@ -67,4 +67,4 @@ private:
     std::unique_ptr<T[]> slots_;
 };
 
-} // namespace trading
+}  // namespace trading

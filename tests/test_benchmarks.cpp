@@ -13,7 +13,8 @@ using namespace trading;
 TEST_CASE("simdjson parse l2update", "[!benchmark][parser]") {
     CoinbaseParser parser;
     CoinbaseMessage msg;
-    const std::string payload = R"({"type":"l2update","product_id":"BTC-USD","time":"2024-01-01T12:00:00.000000Z","changes":[["buy","64999.50","2.0"],["sell","65001.00","0"],["buy","65000.00","0.7"],["buy","64998.50","1.5"],["sell","65001.50","0.5"]]})";
+    const std::string payload =
+        R"({"type":"l2update","product_id":"BTC-USD","time":"2024-01-01T12:00:00.000000Z","changes":[["buy","64999.50","2.0"],["sell","65001.00","0"],["buy","65000.00","0.7"],["buy","64998.50","1.5"],["sell","65001.50","0.5"]]})";
 
     BENCHMARK("parse l2update with 5 changes") {
         return parser.parse(payload, msg);
@@ -21,9 +22,32 @@ TEST_CASE("simdjson parse l2update", "[!benchmark][parser]") {
 }
 
 TEST_CASE("BoundedBook 1M random updates", "[!benchmark][book]") {
-    BoundedBook<4096> book(0.01);
+    BoundedBook<4096> book;
     BENCHMARK("single update") {
         book.update(Side::Bid, Price::fromDouble(100.0, 0.01), Qty{1.0});
+        return 0;
+    };
+}
+
+// Exercises the best-level recompute rather than the plain-write path above.
+TEST_CASE("BoundedBook top-of-book removal", "[!benchmark][book]") {
+    BoundedBook<4096> bidBook;
+    for (int i = 0; i < 10; ++i) {
+        bidBook.update(Side::Bid, Price::fromDouble(100.00 - i * 0.01, 0.01), Qty{1.0});
+    }
+    BENCHMARK("remove best bid, then restore it") {
+        bidBook.update(Side::Bid, Price::fromDouble(100.00, 0.01), Qty{0.0});
+        bidBook.update(Side::Bid, Price::fromDouble(100.00, 0.01), Qty{1.0});
+        return 0;
+    };
+
+    BoundedBook<4096> askBook;
+    for (int i = 0; i < 10; ++i) {
+        askBook.update(Side::Ask, Price::fromDouble(100.00 + i * 0.01, 0.01), Qty{1.0});
+    }
+    BENCHMARK("remove best ask, then restore it") {
+        askBook.update(Side::Ask, Price::fromDouble(100.00, 0.01), Qty{0.0});
+        askBook.update(Side::Ask, Price::fromDouble(100.00, 0.01), Qty{1.0});
         return 0;
     };
 }
@@ -34,7 +58,7 @@ TEST_CASE("Strategy end-to-end tick", "[!benchmark][strategy]") {
     strat.setSymbol(0, 0.01);
     strat.setInitialCash(10'000.0);
 
-    BoundedBook<4096> book(0.01);
+    BoundedBook<4096> book;
     for (int i = 0; i < 6; ++i) {
         book.update(Side::Bid, Price::fromDouble(99.99 - i * 0.01, 0.01), Qty{1.0});
         book.update(Side::Ask, Price::fromDouble(100.00 + i * 0.01, 0.01), Qty{1.0});

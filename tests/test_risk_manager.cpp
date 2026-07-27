@@ -7,17 +7,24 @@ using namespace trading;
 namespace {
 NewOrder mkOrder(SymbolId id, Side s, double qty) {
     NewOrder o{};
-    o.id = 1; o.symbolId = id; o.side = s;
-    o.qty = Qty{qty}; o.price = Price::fromTicks(10000);
+    o.id = 1;
+    o.symbolId = id;
+    o.side = s;
+    o.qty = Qty{qty};
+    o.price = Price::fromTicks(10000);
     return o;
 }
 ExecutionReport mkFill(SymbolId id, Side s, double qty) {
     ExecutionReport r{};
-    r.id = 1; r.symbolId = id; r.side = s; r.isFill = true;
-    r.execQty = Qty{qty}; r.execPrice = Price::fromTicks(10000);
+    r.id = 1;
+    r.symbolId = id;
+    r.side = s;
+    r.isFill = true;
+    r.execQty = Qty{qty};
+    r.execPrice = Price::fromTicks(10000);
     return r;
 }
-} // namespace
+}  // namespace
 
 TEST_CASE("RiskManager approves within limit", "[risk]") {
     RiskManager rm;
@@ -48,8 +55,8 @@ TEST_CASE("RiskManager position tracks fills", "[risk]") {
 
 TEST_CASE("RiskManager rejects buy exceeding cash", "[risk]") {
     RiskManager rm;
-    rm.configure(0, 100.0, 1000.0, 0.01);  // price = 10000 ticks * 0.01 = 100.0
-    REQUIRE(rm.approve(mkOrder(0, Side::Bid, 5.0)));    // cost 500 <= 1000
+    rm.configure(0, 100.0, 1000.0, 0.01);                    // price = 10000 ticks * 0.01 = 100.0
+    REQUIRE(rm.approve(mkOrder(0, Side::Bid, 5.0)));         // cost 500 <= 1000
     REQUIRE_FALSE(rm.approve(mkOrder(0, Side::Bid, 20.0)));  // cost 2000 > 1000
 }
 

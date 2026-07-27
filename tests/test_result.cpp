@@ -15,10 +15,10 @@ TEST_CASE("Result<int> success path", "[result]") {
 }
 
 TEST_CASE("Result<int> error path", "[result]") {
-    Result<int> r{Error::NetworkConnectFailed};
+    Result<int> r{Error::ConfigFileNotFound};
     REQUIRE_FALSE(r.ok());
     REQUIRE_FALSE(r);
-    REQUIRE(r.error() == Error::NetworkConnectFailed);
+    REQUIRE(r.error() == Error::ConfigFileNotFound);
 }
 
 TEST_CASE("Result<void> success", "[result]") {
@@ -28,9 +28,9 @@ TEST_CASE("Result<void> success", "[result]") {
 }
 
 TEST_CASE("Result<void> error", "[result]") {
-    Result<void> r{Error::ConfigInvalid};
+    Result<void> r{Error::ConfigInvalidValue};
     REQUIRE_FALSE(r.ok());
-    REQUIRE(r.error() == Error::ConfigInvalid);
+    REQUIRE(r.error() == Error::ConfigInvalidValue);
 }
 
 TEST_CASE("Result<string> moves cleanly", "[result]") {
@@ -43,6 +43,8 @@ TEST_CASE("Result<string> moves cleanly", "[result]") {
 
 TEST_CASE("Error::toString covers every code", "[result]") {
     REQUIRE(toString(Error::Ok) == "Ok");
-    REQUIRE(toString(Error::SequenceGap) == "SequenceGap");
-    REQUIRE(toString(Error::PoolExhausted) == "PoolExhausted");
+    REQUIRE(toString(Error::ConfigFileNotFound) == "ConfigFileNotFound");
+    REQUIRE(toString(Error::ParseUnexpectedShape) == "ParseUnexpectedShape");
+    REQUIRE(toString(Error::ConfigInvalidValue) == "ConfigInvalidValue");
+    REQUIRE(toString(Error::ParseMalformedJson) == "ParseMalformedJson");
 }

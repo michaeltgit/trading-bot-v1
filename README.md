@@ -1,5 +1,7 @@
 # trading-engine
 
+[![CI](https://github.com/michaeltgit/trading-bot-v1/actions/workflows/ci.yml/badge.svg)](https://github.com/michaeltgit/trading-bot-v1/actions/workflows/ci.yml)
+
 A low-latency C++ trading engine against Coinbase Exchange. Paper trading only; no real orders are placed.
 
 The network thread ingests the Coinbase WebSocket feed, parses messages with simdjson, and pushes structured market events onto a lock-free SPSC queue. The strategy thread drains the queue, updates a flat price-level order book, runs the imbalance strategy, and routes signals through a risk check and a simulated fill engine. HDR latency histograms are recorded at every stage.
@@ -13,7 +15,9 @@ cmake --build build -j
 
 Build types are Debug (ASAN + UBSAN at -O1), Release (-O3, -march=native, LTO), and RelWithDebInfo.
 
-Dependencies: C++20 compiler, CMake 3.20+, Boost (system, thread), OpenSSL, nlohmann_json, libcurl, spdlog. simdjson and Catch2 are pulled in via FetchContent.
+`-march=native` is on by default in Release; pass `-DTRADING_NATIVE_ARCH=OFF` for a portable binary that runs on machines other than the one it was built on.
+
+Dependencies: C++20 compiler, CMake 3.20+, Boost (headers only), OpenSSL, nlohmann_json. simdjson and Catch2 are pulled in via FetchContent.
 
 ## Run
 
@@ -21,14 +25,20 @@ Dependencies: C++20 compiler, CMake 3.20+, Boost (system, thread), OpenSSL, nloh
 ./build/trading_engine config.json
 ```
 
-Ctrl-C flushes metrics and exits cleanly. A heartbeat line prints every 2 seconds and a full metrics dump every 30 seconds.
+Ctrl-C flushes metrics and exits cleanly. A heartbeat line prints every 2 seconds and a full metrics dump every 30 seconds. The default config busy-spins the strategy thread, which occupies one core; set `strategy_busy_spin` to false for an idle-friendly poll.
 
 ## Tests
 
 ```
 cmake --build build --target tests_cpp
 ctest --test-dir build --output-on-failure
+```
 
+## Benchmarks
+
+`[!benchmark]` is a Catch2 tag that selects the benchmark cases, so this runs those and nothing else:
+
+```
 ./build/tests_cpp "[!benchmark]"
 ```
 
@@ -51,7 +61,8 @@ ctest --test-dir build --output-on-failure
   "threading": {
     "network_core": -1,
     "strategy_core": -1,
-    "strategy_busy_spin": false
+    "strategy_busy_spin": true,
+    "strategy_sleep_us": 10
   },
   "strategy": {
     "depth_levels": 5,
@@ -77,17 +88,17 @@ An optional `risk` block tunes the circuit breaker, which halts order dispatch a
 
 `l2update`s received before the first `snapshot` (or before a post-reconnect snapshot) are dropped rather than applied to an unsynced book; on reconnect the feed re-sends a fresh snapshot.
 
-Set `network_core` / `strategy_core` to pin threads to specific CPU cores on Linux (via `pthread_setaffinity_np`) or macOS (best-effort `thread_policy_set`). `strategy_busy_spin` hot-waits on the queue instead of sleeping; only useful with pinned, isolated cores.
+Set `network_core` / `strategy_core` to pin threads to specific CPU cores on Linux (via `pthread_setaffinity_np`) or macOS (best-effort `thread_policy_set`). `strategy_busy_spin` hot-waits on the queue instead of sleeping — lowest latency at the cost of a fully occupied core; pinning that core makes the tail more consistent. With it off, `strategy_sleep_us` sets the idle poll sleep between queue checks (50 when the key is absent; the config above lowers it to 10); lower values cut reaction latency for a little more idle CPU.
 
 ## Layout
 
 ```
 include/trading/
-  core/       types, result, clock, logger, metrics, runtime
+  core/       types, result, error, clock, logger, metrics, runtime, affinity
   md/         coinbase_*, bounded_book
   strategy/   signal, imbalance_strategy, order_sizer, pnl_tracker
   exec/       order_types, risk_manager, execution_engine, circuit_breaker
-  util/       spsc_queue, object_pool, hdr_histogram
+  util/       spsc_queue, hdr_histogram
 src/
 tests/        Catch2 tests + fixtures/
 config.json

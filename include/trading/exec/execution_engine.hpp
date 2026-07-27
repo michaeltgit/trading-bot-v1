@@ -9,26 +9,22 @@ namespace trading {
 class ExecutionEngine {
 public:
     template <size_t Cap>
-    ExecutionReport simulate(const NewOrder& order,
-                             const BoundedBook<Cap>& book,
-                             double tickSize,
+    ExecutionReport simulate(const NewOrder& order, const BoundedBook<Cap>& book, double tickSize,
                              Timestamp now) const noexcept;
 };
 
 template <size_t Cap>
-ExecutionReport ExecutionEngine::simulate(const NewOrder& order,
-                                          const BoundedBook<Cap>& book,
-                                          double tickSize,
-                                          Timestamp now) const noexcept {
+ExecutionReport ExecutionEngine::simulate(const NewOrder& order, const BoundedBook<Cap>& book,
+                                          double tickSize, Timestamp now) const noexcept {
     ExecutionReport rpt{};
     rpt.id = order.id;
     rpt.symbolId = order.symbolId;
     rpt.side = order.side;
     rpt.completedNs = now;
 
-    PriceLevel levels[20];
+    PriceLevel levels[MAX_BOOK_WALK];
     Side opposing = opposite(order.side);
-    size_t n = book.depth(opposing, levels, 20);
+    size_t n = book.depth(opposing, levels, MAX_BOOK_WALK);
 
     double limitPx = order.price.toDouble(tickSize);
     double remaining = order.qty.value();
@@ -51,10 +47,8 @@ ExecutionReport ExecutionEngine::simulate(const NewOrder& order,
 
     rpt.isFill = filled > 0.0;
     rpt.execQty = Qty{filled};
-    rpt.execPrice = (filled > 0.0)
-        ? Price::fromDouble(cost / filled, tickSize)
-        : order.price;
+    rpt.execPrice = (filled > 0.0) ? Price::fromDouble(cost / filled, tickSize) : order.price;
     return rpt;
 }
 
-} // namespace trading
+}  // namespace trading

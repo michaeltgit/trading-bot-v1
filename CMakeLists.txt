@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
-cmake_policy(SET CMP0167 OLD)
+if(POLICY CMP0167)
+    cmake_policy(SET CMP0167 NEW)
+endif()
 project(TradingEngine LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -38,18 +40,14 @@ endif()
 # -----------------------------------------------------------------------------
 # Dependencies
 # -----------------------------------------------------------------------------
-find_package(Boost 1.70 REQUIRED COMPONENTS system thread)
+find_package(Boost 1.70 REQUIRED)
 find_package(OpenSSL REQUIRED)
-find_package(spdlog REQUIRED)
 find_package(nlohmann_json REQUIRED)
-find_package(CURL REQUIRED)
 
 include_directories(
     ${CMAKE_SOURCE_DIR}/include
     ${Boost_INCLUDE_DIRS}
-    ${spdlog_INCLUDE_DIRS}
     ${nlohmann_json_INCLUDE_DIRS}
-    ${CURL_INCLUDE_DIRS}
     ${OPENSSL_INCLUDE_DIR}
 )
 
@@ -84,14 +82,12 @@ add_library(trading_core
 target_link_libraries(trading_core
     PUBLIC
         trading_flags
-        spdlog::spdlog
         nlohmann_json::nlohmann_json
         simdjson
     PRIVATE
-        Boost::system
-        Boost::thread
-        ${OPENSSL_LIBRARIES}
-        ${CURL_LIBRARIES}
+        Boost::headers
+        OpenSSL::SSL
+        OpenSSL::Crypto
 )
 
 # -----------------------------------------------------------------------------
